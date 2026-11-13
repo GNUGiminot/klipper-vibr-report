@@ -32,7 +32,15 @@ curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main
 VIBR_TEST
 ```
 
-Оси захоумятся сами. Тест с шагом 5 мм/с занимает 4–6 минут. Параметры (все необязательные):
+Оси захоумятся сами. Тест с шагом 5 мм/с занимает 4–6 минут.
+
+Та же команда со всеми параметрами — скопируйте и меняйте нужные значения:
+
+```
+VIBR_TEST MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300
+```
+
+Что они значат (все необязательные, не указанные берутся по умолчанию):
 
 | Параметр | По умолчанию | Что это |
 |---|---|---|
@@ -144,4 +152,82 @@ GPL-3.0. Движения теста перенесены из `VIBRATIONS_CALIB
 
 ---
 
-**English.** `VIBR_TEST` measures toolhead vibrations at 30–300 mm/s (ShakeTune-style square pattern, no ShakeTune needed) and builds an offline HTML/CSV report with vibration peaks, quiet speed zones and advice for your OrcaSlicer speeds (read from the latest G-code, flow-limited). Tested on stock QIDI Q1 Pro. Install: `curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main/install.sh | bash`, then add `[include vibr_test.cfg]` to `printer.cfg`.
+# English
+
+## klipper-vibr-report — at which speeds does your printer ring?
+
+One console command — `VIBR_TEST` — moves the toolhead around a square at 30–300 mm/s, records vibrations with the accelerometer and builds a report: a "speed → vibrations" chart, vibration peaks, quiet speed zones and **a table for the speeds of your OrcaSlicer profile — current value, quiet or resonance, what to set**. The report is a single HTML page: download it from Fluidd/Mainsail and open it in any browser, no internet needed.
+
+- Made and tested on **stock QIDI Q1 Pro** (QIDI Klipper on Python 2.7). Works on mainline Klipper too.
+- **ShakeTune is not required** and does not conflict (own macro and file names). The motion pattern is the same as ShakeTune 2.6.1 `VIBRATIONS_CALIBRATION`.
+- The installer does not touch `printer.cfg`: you add one `[include vibr_test.cfg]` line yourself.
+
+### Install on a stock QIDI Q1 Pro (one command)
+
+Over SSH (user `mks`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main/install.sh | bash
+```
+
+It checks the accelerometer, the `gcode_shell_command` extension and Python with numpy, clones the files to `~/klipper-vibr-report` and links `vibr_test.cfg` into your config folder. Then once:
+
+1. Fluidd/Mainsail → configuration → `printer.cfg` → next to the other `[include …]` lines add `[include vibr_test.cfg]`.
+2. Save & restart.
+
+### Run
+
+Empty bed, not printing. In the Fluidd/Mainsail console:
+
+```
+VIBR_TEST
+```
+
+The printer homes itself. With a 5 mm/s step the test takes 4–6 minutes. The same command with every parameter spelled out — copy it and change what you need:
+
+```
+VIBR_TEST MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `MIN_SPEED` / `MAX_SPEED` | 30 / 300 | speed range, mm/s |
+| `SPEED_INCREMENT` | 5 | step, mm/s (3 is finer but slower) |
+| `ACCEL` | 5000 | acceleration of the test moves (capped by the printer `max_accel`) |
+| `SIZE` | 80 | square side, mm |
+| `Z_HEIGHT` | 20 | toolhead height, mm |
+| `TRAVEL_SPEED` | 300 | travel moves, mm/s |
+| `CHIP` | — | accelerometer name if you have several |
+
+### Results
+
+Config folder → `vibr_report_results/` (last 5 runs are kept): `vibr_report_<date>.html` (chart, peaks, quiet zones, slicer advice), `vibr_recommendations_<date>.csv`, `vibr_summary_<date>.csv`, `vibr_data_<date>.tar.gz` (raw measurements). The report UI and CSV files are in Russian; console messages are in English.
+
+**Filament.** The test does not depend on the filament — no extrusion. The filament only sets the max volumetric flow, i.e. how fast the slicer really prints a line. Speeds and flow are read from the latest G-code. The report has a filament list: add yours (e.g. PC 4, ABS 17 mm³/s), it is saved in the browser and switching re-calculates the table without a new test.
+
+**How to read.** Level = vibration energy in % of the noisiest test speed. "Quiet" = ≤ 35 % and not next to a peak (±1 test step). Peaks are found like in ShakeTune: the main resonance and small local bumps. "Actual" = speed after the flow limit. "Set" = nearest quiet speed below the flow limit, away from the edge of a resonance. Peak heights vary between runs, their positions do not — run the test twice and avoid speeds near peaks present in both.
+
+### Manual install (non-stock / other Klipper)
+
+Requirements: a working accelerometer (`ACCELEROMETER_QUERY` answers), the `gcode_shell_command` extension (KIAUH → Advanced → G-Code Shell Command) and numpy in Klipper's Python (`~/klippy-env/bin/pip install numpy`).
+
+```bash
+cd ~
+git clone https://github.com/GNUGiminot/klipper-vibr-report.git
+chmod +x ~/klipper-vibr-report/*.sh
+ln -s ~/klipper-vibr-report/vibr_test.cfg ~/printer_data/config/vibr_test.cfg   # stock QIDI: ~/klipper_config/
+```
+
+Add `[include vibr_test.cfg]` to `printer.cfg`, save & restart. Or just run `bash ~/klipper-vibr-report/install.sh` — it does the same and checks the requirements.
+
+### Already have ShakeTune 2.x?
+
+No conflicts. You can also build the report from ShakeTune measurements: `~/klipper-vibr-report/vibr_report.sh --input /tmp` right after `VIBRATIONS_CALIBRATION` (on stock QIDI run it with `ACCEL_CHIP=default` after `G28`), or `--input <ShakeTune vibrations .tar.gz>`. ShakeTune 3.x+ stores data differently and is not supported.
+
+### Update / remove
+
+Update: run the install command again and restart Klipper (or add `moonraker_update.conf` to `moonraker.conf`). Remove: delete the include line from `printer.cfg`, save, then `bash ~/klipper-vibr-report/uninstall.sh` (results are kept).
+
+### License
+
+GPL-3.0. Test motion ported from [Klippain ShakeTune](https://github.com/Frix-x/klippain-shaketune) `VIBRATIONS_CALIBRATION` (Frix-x, GPL-3.0). Author: Giminot — https://t.me/Giminot

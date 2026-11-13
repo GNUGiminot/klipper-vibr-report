@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вибрации по скоростям</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1d232b; --muted: #5d6875; --line: #d9dee5;
+  --accent: #2f6fde; --quiet: #2e9e5b; --quiet-bg: rgba(46,158,91,.14); --warn: #c98a12; --bad: #d2463c;
+  --input: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c; --card: #1c2027; --text: #e6e9ee; --muted: #9aa4b1; --line: #2e343d;
+    --accent: #6b9cf0; --quiet: #4cc27f; --quiet-bg: rgba(76,194,127,.16); --warn: #e3a838; --bad: #f06a5f;
+    --input: #232831;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 0 0 12px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+label { display: block; font-size: .85rem; color: var(--muted); }
+input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--input); color: var(--text); font: inherit; }
+.tbl { width: 100%; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .82rem; color: var(--muted); font-weight: 600; }
+td input { width: 80px; }
+select, button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--input); color: var(--text); font: inherit; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+.plastic { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin: 0 0 14px; }
+.plastic > div { min-width: 140px; }
+.plastic input { width: 110px; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .82rem; font-weight: 600; white-space: nowrap; }
+.t-quiet { background: var(--quiet-bg); color: var(--quiet); }
+.t-mid { background: rgba(201,138,18,.15); color: var(--warn); }
+.t-bad { background: rgba(210,70,60,.14); color: var(--bad); }
+.t-na { color: var(--muted); }
+.rec { font-weight: 700; color: var(--accent); }
+.note { color: var(--muted); font-size: .88rem; }
+svg { width: 100%; height: auto; display: block; }
+svg text { fill: var(--muted); font-size: 11px; }
+details summary { cursor: pointer; font-weight: 600; }
+ul { margin: 0; padding-left: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Вибрации по скоростям</h1>
+  <p class="sub" id="sub"></p>
+
+  <section class="card">
+    <h2>График</h2>
+    <div id="chart"></div>
+    <p class="note">Зелёным — тихие зоны (уровень не выше порога «тихо» и не рядом с пиком). Красные крестики — пики вибраций: скорости, которых стоит избегать (как пики на графике ShakeTune). Вертикальные линии с номерами — ваши скорости из таблицы ниже, с учётом предела расхода.</p>
+  </section>
+
+  <section class="card">
+    <h2>Что поменять в OrcaSlicer</h2>
+    <p class="note">Процесс → вкладка «Скорость». Значения взяты из G-code; их можно исправить прямо здесь — рекомендации пересчитаются.</p>
+    <div class="plastic">
+      <div><label for="plastic">Пластик</label><select id="plastic"></select></div>
+      <div><label for="maxvol">Макс. объёмный расход, мм³/с</label><input id="maxvol" type="number" step="0.5" min="0"></div>
+      <div><label for="pname">Новый пластик</label><input id="pname" placeholder="например, ABS"></div>
+      <div><button id="padd" type="button">Добавить</button> <button id="pdel" type="button">Удалить</button></div>
+    </div>
+    <p class="note" style="margin-top:-6px">Тест не зависит от пластика — от него зависит только расход, а значит, фактические скорости. Добавьте свои пластики с их расходом из OrcaSlicer (Филамент → Макс. объёмная скорость): список сохранится в этом браузере, переключайтесь между ними без нового теста.</p>
+    <div class="tbl"><table id="rec"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Исходные данные</h2>
+    <div class="grid">
+      <div><label for="layer">Высота слоя, мм</label><input id="layer" type="number" step="0.01"></div>
+      <div><label for="quiet">Порог «тихо», % от максимума</label><input id="quiet" type="number" step="5"></div>
+      <div><label for="peak">Порог «резонанс», %</label><input id="peak" type="number" step="5"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Как читать</h2>
+    <ul>
+      <li><b>Уровень</b> — энергия вибраций при этой скорости в процентах от самой «шумной» скорости теста. Это сравнение скоростей между собой, а не абсолютная величина.</li>
+      <li><b>Фактически</b> — скорость, которую слайсер реально даст: он не превышает макс. объёмный расход пластика. Поэтому быстрые заполнения часто идут медленнее, чем написано в профиле.</li>
+      <li><b>Поставить</b> — ближайшая тихая скорость, не выше предела расхода. Если её нет — оставьте как есть.</li>
+      <li>Тест идёт на прямых длинных ходах с ускорением теста. На коротких отрезках голова не успевает разогнаться до заданной скорости, поэтому важнее всего это для внешних стенок и заполнения на крупных деталях.</li>
+      <li>Скорости ниже начала теста почти не дают вибраций, выше конца — не проверены.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Все скорости теста</summary>
+      <div class="tbl" style="margin-top:12px"><table id="data"></table></div>
+    </details>
+  </section>
+</main>
+<script>
+const D = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const rows = D.rows;
+const S = rows.map(r => r.speed);
+const fmt = (x, nd = 0) => x == null ? "—" : x.toFixed(nd).replace(".", ",");
+
+function flowCap(maxvol, lw, layer) {
+  if (!maxvol || !lw || !layer) return null;
+  return maxvol / (layer * (lw - layer * (1 - Math.PI / 4)));
+}
+function levelAt(v) {
+  if (v < S[0] || v > S[S.length - 1]) return null;
+  for (let i = 1; i < S.length; i++) if (v <= S[i]) {
+    const t = (v - S[i - 1]) / (S[i] - S[i - 1] || 1);
+    return rows[i - 1].level + t * (rows[i].level - rows[i - 1].level);
+  }
+  return rows[rows.length - 1].level;
+}
+// местные пики (как у ShakeTune) считает скрипт; рядом с пиком (±1 шаг теста) — не тихо, даже при низком уровне
+const PEAKS = D.peaks || [], STEP = D.step || 5;
+function verdict(level, v, q, p) {
+  const d = Math.min(...PEAKS.map(x => Math.abs(v - x)), 1e9);
+  if (d <= STEP / 2 || level >= p) return "резонанс";
+  if (d <= STEP * 1.01 || level > q) return "повышенные";
+  return "тихо";
+}
+function zones(q, p) {
+  const out = []; let a = null, b = null;
+  rows.forEach(r => { if (verdict(r.level, r.speed, q, p) === "тихо") { if (a == null) a = r.speed; b = r.speed; } else if (a != null) { out.push([a, b]); a = null; } });
+  if (a != null) out.push([a, b]);
+  return out;
+}
+function recommend(f, maxvol, q, p) {
+  const res = { cap: f.lw ? flowCap(maxvol, f.lw, f.layer) : null, eff: null, level: null, verdict: "", rec: null, note: "" };
+  if (f.speed == null || isNaN(f.speed)) { res.verdict = "нет данных"; return res; }
+  const eff = res.cap ? Math.min(f.speed, res.cap) : f.speed;
+  res.eff = eff; res.level = levelAt(eff);
+  if (res.cap && f.speed > res.cap) res.note = `слайсер всё равно снизит до ${fmt(res.cap)} мм/с из-за предела расхода. `;
+  if (res.level == null) {
+    res.verdict = "вне теста";
+    if (f.key === "travel_speed") { res.note = "на перемещениях пластик не выдавливается, на качество это почти не влияет."; return res; }
+    res.note += `тест был ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с. ` + (eff > S[S.length - 1]
+      ? `Для этой скорости повторите тест с MAX_SPEED=${Math.floor(eff / 10 + 1) * 10}.`
+      : "Медленные скорости вибраций почти не дают.");
+    return res;
+  }
+  res.verdict = verdict(res.level, eff, q, p);
+  if (res.verdict === "тихо") return res;
+  const near = PEAKS.find(x => Math.abs(eff - x) <= STEP * 1.01);
+  if (near != null) res.note += `рядом пик вибраций ${fmt(near)} мм/с. `;
+  const ok = rows.map(r => verdict(r.level, r.speed, q, p) === "тихо" && (res.cap == null || r.speed <= res.cap));
+  // с запасом: соседние скорости тоже тихие, чтобы не встать на край резонанса
+  const safe = rows.map((r, i) => i).filter(i => ok[i] && [i - 1, i + 1].every(j => j < 0 || j >= rows.length || ok[j]));
+  const cand = (safe.length ? safe : rows.map((r, i) => i).filter(i => ok[i])).map(i => rows[i].speed);
+  if (!cand.length) { res.note += "тихих скоростей ниже предела расхода нет: оставьте или снизьте скорость."; return res; }
+  const best = cand.reduce((a, s) => (Math.abs(s - eff) < Math.abs(a - eff) || (Math.abs(s - eff) === Math.abs(a - eff) && s > a)) ? s : a);
+  res.rec = best;
+  zones(q, p).forEach(([a, b]) => { if (a <= best && best <= b) res.note += a !== b ? `тихая зона ${fmt(a)}–${fmt(b)} мм/с.` : `тихая точка ${fmt(a)} мм/с.`; });
+  return res;
+}
+const tag = v => {
+  const cls = { "тихо": "t-quiet", "повышенные": "t-mid", "резонанс": "t-bad" }[v] || "t-na";
+  return `<span class="tag ${cls}">${v}</span>`;
+};
+
+function chart(q, p, feats) {
+  const W = 1000, H = 330, L = 44, R = 14, T = 14, B = 34;
+  const x0 = S[0], x1 = S[S.length - 1];
+  const X = v => L + (v - x0) / (x1 - x0 || 1) * (W - L - R);
+  const Y = l => T + (1 - l / 100) * (H - T - B);
+  const step = S.length > 1 ? (S[1] - S[0]) / 2 : 1;
+  let g = "";
+  zones(q, p).forEach(([a, b]) => { g += `<rect x="${X(Math.max(x0, a - step))}" y="${T}" width="${X(Math.min(x1, b + step)) - X(Math.max(x0, a - step))}" height="${H - T - B}" fill="var(--quiet-bg)"/>`; });
+  for (let l = 0; l <= 100; l += 25) g += `<line x1="${L}" x2="${W - R}" y1="${Y(l)}" y2="${Y(l)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(l) + 4}" text-anchor="end">${l}%</text>`;
+  const tick = Math.max(10, Math.round((x1 - x0) / 10 / 10) * 10);
+  for (let v = Math.ceil(x0 / tick) * tick; v <= x1; v += tick) g += `<text x="${X(v)}" y="${H - 12}" text-anchor="middle">${v}</text>`;
+  g += `<text x="${W - R}" y="${H - 1}" text-anchor="end">мм/с</text>`;
+  [[q, "var(--quiet)"], [p, "var(--bad)"]].forEach(([l, c]) => g += `<line x1="${L}" x2="${W - R}" y1="${Y(l)}" y2="${Y(l)}" stroke="${c}" stroke-dasharray="5 4" opacity=".7"/>`);
+  g += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.2" points="${rows.map(r => X(r.speed) + "," + Y(r.level)).join(" ")}"/>`;
+  rows.forEach(r => g += `<circle cx="${X(r.speed)}" cy="${Y(r.level)}" r="2.6" fill="var(--accent)"><title>${fmt(r.speed)} мм/с — ${fmt(r.level, 1)}%</title></circle>`);
+  PEAKS.forEach(x => { const y = Y(levelAt(x)); g += `<path d="M${X(x) - 5},${y - 5}L${X(x) + 5},${y + 5}M${X(x) - 5},${y + 5}L${X(x) + 5},${y - 5}" stroke="var(--bad)" stroke-width="2.4"/>${y - 9 < T + 4 ? `<text x="${X(x) + 8}" y="${y + 4}"` : `<text x="${X(x)}" y="${y - 9}" text-anchor="middle"`} style="fill:var(--bad);font-weight:700">${fmt(x)}</text>`; });
+  feats.forEach((f, i) => {
+    if (f.r.eff == null || f.r.eff < x0 || f.r.eff > x1) return;
+    const c = f.r.verdict === "тихо" ? "var(--quiet)" : f.r.verdict === "резонанс" ? "var(--bad)" : "var(--warn)";
+    g += `<line x1="${X(f.r.eff)}" x2="${X(f.r.eff)}" y1="${T}" y2="${H - B}" stroke="${c}" stroke-width="1.5"/><text x="${X(f.r.eff) + 3}" y="${T + 11 + (i % 4) * 12}" style="fill:${c};font-weight:700">${i + 1}</text>`;
+    if (f.r.rec != null) g += `<circle cx="${X(f.r.rec)}" cy="${Y(levelAt(f.r.rec))}" r="5" fill="none" stroke="var(--quiet)" stroke-width="2"><title>${i + 1}: поставить ${fmt(f.r.rec)} мм/с</title></circle>`;
+  });
+  $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Уровень вибраций по скоростям">${g}</svg>`;
+}
+
+function render() {
+  const maxvol = parseFloat($("maxvol").value) || null;
+  const q = parseFloat($("quiet").value) || 35, p = parseFloat($("peak").value) || 60;
+  const layer = parseFloat($("layer").value) || D.slicer.layer;
+  const feats = D.slicer.features.map((f, i) => {
+    const sp = parseFloat(document.querySelector(`[data-i="${i}"]`)?.value);
+    const ff = Object.assign({}, f, { speed: isNaN(sp) ? f.speed : sp, layer: f.key === "initial_layer_speed" ? f.layer : layer });
+    return Object.assign(ff, { r: recommend(ff, maxvol, q, p) });
+  });
+  feats.forEach((f, i) => {
+    const set = (k, h) => { $(`c${k}${i}`).innerHTML = h; };
+    set("cap", f.r.cap ? fmt(f.r.cap) : "—");
+    set("eff", fmt(f.r.eff));
+    set("lvl", f.r.level == null ? "—" : fmt(f.r.level, 0) + "%");
+    set("ver", tag(f.r.verdict));
+    set("rec", f.r.rec != null ? `<span class="rec">${fmt(f.r.rec)}</span>` : (f.r.verdict === "тихо" ? "оставить" : "—"));
+    set("note", f.r.note);
+  });
+  chart(q, p, feats);
+  $("data").innerHTML = `<tr><th>Скорость, мм/с</th><th>Уровень</th><th>Оценка</th><th>X</th><th>Y</th><th>Z</th><th>Главная частота, Гц</th></tr>` +
+    rows.map(r => `<tr><td class="num">${fmt(r.speed)}</td><td class="num">${fmt(r.level, 1)}%</td><td>${tag(verdict(r.level, r.speed, q, p))}${PEAKS.includes(r.speed) ? " <b style=\"color:var(--bad)\">пик</b>" : ""}</td>
+      <td class="num">${r.ex.toPrecision(3)}</td><td class="num">${r.ey.toPrecision(3)}</td><td class="num">${r.ez.toPrecision(3)}</td><td class="num">${fmt(r.dom)}</td></tr>`).join("");
+}
+
+$("rec").innerHTML = `<tr><th>№</th><th>Что</th><th>Сейчас, мм/с</th><th>Предел расхода</th><th>Фактически</th><th>Вибрации</th><th>Оценка</th><th>Поставить</th><th>Пояснение</th></tr>` +
+  D.slicer.features.map((f, i) => `<tr><td>${i + 1}</td><td>${f.name}<div class="note">${f.key}</div></td>
+    <td><input data-i="${i}" type="number" step="5" value="${f.speed == null ? "" : f.speed}" aria-label="${f.name}, мм/с"></td>
+    <td class="num" id="ccap${i}"></td><td class="num" id="ceff${i}"></td><td class="num" id="clvl${i}"></td>
+    <td id="cver${i}"></td><td class="num" id="crec${i}"></td><td class="note" id="cnote${i}"></td></tr>`).join("");
+$("sub").textContent = `Замеров: ${D.files}, скорости ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с, ускорение теста ${D.accel} мм/с². ` +
+  (D.gcode ? `Скорости слайсера — из «${D.gcode}».` : "G-code не найден — введите скорости вручную.") + ` Отчёт от ${D.date}.`;
+// Пластики: имя + макс. расход; хранятся в браузере (общие для всех отчётов), без хранилища — только на эту сессию
+const PKEY = "vibr-report-plastics", AKEY = "vibr-report-plastic-active";
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без хранилища */ } },
+};
+let plastics = [];
+try { plastics = JSON.parse(store.get(PKEY) || "[]").filter(x => x && x.name); } catch (e) { plastics = []; }
+const gName = D.slicer.filament || "из G-code";
+if (D.slicer.maxvol && !plastics.some(x => x.name === gName)) plastics.unshift({ name: gName, maxvol: D.slicer.maxvol });
+if (!plastics.length) plastics.push({ name: gName, maxvol: D.slicer.maxvol || null });
+let active = plastics.some(x => x.name === store.get(AKEY)) ? store.get(AKEY) : (plastics.some(x => x.name === gName) ? gName : plastics[0].name);
+const save = () => { store.set(PKEY, JSON.stringify(plastics)); store.set(AKEY, active); };
+const cur = () => plastics.find(x => x.name === active);
+function fillPlastics() {
+  $("plastic").innerHTML = plastics.map(x => `<option${x.name === active ? " selected" : ""}>${x.name.replace(/</g, "&lt;")}</option>`).join("");
+  $("maxvol").value = cur().maxvol == null ? "" : cur().maxvol;
+}
+$("plastic").addEventListener("change", e => { active = e.target.value; save(); fillPlastics(); render(); });
+$("maxvol").addEventListener("input", e => { cur().maxvol = parseFloat(e.target.value) || null; save(); });
+$("padd").addEventListener("click", () => {
+  const name = $("pname").value.trim();
+  if (!name) { $("pname").focus(); return; }
+  if (!plastics.some(x => x.name === name)) plastics.push({ name, maxvol: parseFloat($("maxvol").value) || null });
+  active = name; $("pname").value = ""; save(); fillPlastics(); $("maxvol").focus(); render();
+});
+$("pdel").addEventListener("click", () => {
+  if (plastics.length < 2) return;
+  plastics = plastics.filter(x => x.name !== active); active = plastics[0].name; save(); fillPlastics(); render();
+});
+fillPlastics();
+$("layer").value = D.slicer.layer;
+$("quiet").value = D.quiet; $("peak").value = D.peak;
+document.addEventListener("input", e => { if (e.target.tagName === "INPUT" && e.target.id !== "pname") render(); });
+render();
+</script>
+</body>
+</html>

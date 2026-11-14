@@ -60,7 +60,8 @@ ul { margin: 0; padding-left: 1.2em; }
   <section class="card">
     <h2>График</h2>
     <div id="chart"></div>
-    <p class="note">Зелёным — тихие зоны (уровень не выше порога «тихо» и не рядом с пиком). Красные крестики — пики вибраций: скорости, которых стоит избегать (как пики на графике ShakeTune). Вертикальные линии с номерами — ваши скорости из таблицы ниже, с учётом предела расхода.</p>
+    <p class="note">Зелёным — тихие зоны (уровень не выше порога «тихо» и не рядом с пиком). Красные крестики — пики вибраций: скорости, которых стоит избегать (как пики на графике ShakeTune). Вертикальные линии с номерами — ваши скорости из таблицы ниже, с учётом предела расхода.
+      <span id="passnote"></span></p>
   </section>
 
   <section class="card">
@@ -124,6 +125,8 @@ function levelAt(v) {
 }
 // местные пики (как у ShakeTune) считает скрипт; рядом с пиком (±1 шаг теста) — не тихо, даже при низком уровне
 const PEAKS = D.peaks || [], STEP = D.step || 5;
+rows.forEach(r => { if (!r.passes) r.passes = [r.level]; });
+const NPASS = rows[0].passes.length;
 function verdict(level, v, q, p) {
   const d = Math.min(...PEAKS.map(x => Math.abs(v - x)), 1e9);
   if (d <= STEP / 2 || level >= p) return "резонанс";
@@ -182,6 +185,8 @@ function chart(q, p, feats) {
   for (let v = Math.ceil(x0 / tick) * tick; v <= x1; v += tick) g += `<text x="${X(v)}" y="${H - 12}" text-anchor="middle">${v}</text>`;
   g += `<text x="${W - R}" y="${H - 1}" text-anchor="end">мм/с</text>`;
   [[q, "var(--quiet)"], [p, "var(--bad)"]].forEach(([l, c]) => g += `<line x1="${L}" x2="${W - R}" y1="${Y(l)}" y2="${Y(l)}" stroke="${c}" stroke-dasharray="5 4" opacity=".7"/>`);
+  if (NPASS > 1) for (let k = 0; k < NPASS; k++)
+    g += `<polyline fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="${k ? "2 3" : "6 3"}" opacity=".7" points="${rows.map(r => X(r.speed) + "," + Y(r.passes[k])).join(" ")}"><title>проход ${k + 1}</title></polyline>`;
   g += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.2" points="${rows.map(r => X(r.speed) + "," + Y(r.level)).join(" ")}"/>`;
   rows.forEach(r => g += `<circle cx="${X(r.speed)}" cy="${Y(r.level)}" r="2.6" fill="var(--accent)"><title>${fmt(r.speed)} мм/с — ${fmt(r.level, 1)}%</title></circle>`);
   PEAKS.forEach(x => { const y = Y(levelAt(x)); g += `<path d="M${X(x) - 5},${y - 5}L${X(x) + 5},${y + 5}M${X(x) - 5},${y + 5}L${X(x) + 5},${y - 5}" stroke="var(--bad)" stroke-width="2.4"/>${y - 9 < T + 4 ? `<text x="${X(x) + 8}" y="${y + 4}"` : `<text x="${X(x)}" y="${y - 9}" text-anchor="middle"`} style="fill:var(--bad);font-weight:700">${fmt(x)}</text>`; });
@@ -213,9 +218,10 @@ function render() {
     set("note", f.r.note);
   });
   chart(q, p, feats);
-  $("data").innerHTML = `<tr><th>Скорость, мм/с</th><th>Уровень</th><th>Оценка</th><th>X</th><th>Y</th><th>Z</th><th>Главная частота, Гц</th></tr>` +
+  const ph = NPASS > 1 ? rows[0].passes.map((x, k) => `<th>Проход ${k + 1}</th>`).join("") : "";
+  $("data").innerHTML = `<tr><th>Скорость, мм/с</th><th>Уровень</th><th>Оценка</th>${ph}<th>X</th><th>Y</th><th>Z</th><th>Главная частота, Гц</th></tr>` +
     rows.map(r => `<tr><td class="num">${fmt(r.speed)}</td><td class="num">${fmt(r.level, 1)}%</td><td>${tag(verdict(r.level, r.speed, q, p))}${PEAKS.includes(r.speed) ? " <b style=\"color:var(--bad)\">пик</b>" : ""}</td>
-      <td class="num">${r.ex.toPrecision(3)}</td><td class="num">${r.ey.toPrecision(3)}</td><td class="num">${r.ez.toPrecision(3)}</td><td class="num">${fmt(r.dom)}</td></tr>`).join("");
+      ${NPASS > 1 ? r.passes.map(x => `<td class="num">${fmt(x, 0)}%</td>`).join("") : ""}<td class="num">${r.ex.toPrecision(3)}</td><td class="num">${r.ey.toPrecision(3)}</td><td class="num">${r.ez.toPrecision(3)}</td><td class="num">${fmt(r.dom)}</td></tr>`).join("");
 }
 
 $("rec").innerHTML = `<tr><th>№</th><th>Что</th><th>Сейчас, мм/с</th><th>Предел расхода</th><th>Фактически</th><th>Вибрации</th><th>Оценка</th><th>Поставить</th><th>Пояснение</th></tr>` +
@@ -223,7 +229,7 @@ $("rec").innerHTML = `<tr><th>№</th><th>Что</th><th>Сейчас, мм/с</
     <td><input data-i="${i}" type="number" step="5" value="${f.speed == null ? "" : f.speed}" aria-label="${f.name}, мм/с"></td>
     <td class="num" id="ccap${i}"></td><td class="num" id="ceff${i}"></td><td class="num" id="clvl${i}"></td>
     <td id="cver${i}"></td><td class="num" id="crec${i}"></td><td class="note" id="cnote${i}"></td></tr>`).join("");
-$("sub").textContent = `Замеров: ${D.files}, скорости ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с, ускорение теста ${D.accel} мм/с². ` +
+$("sub").textContent = `Замеров: ${D.files}` + (NPASS > 1 ? `, проходов: ${NPASS} (уровень — среднее)` : "") + `, скорости ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с, ускорение теста ${D.accel} мм/с². ` +
   (D.gcode ? `Скорости слайсера — из «${D.gcode}».` : "G-code не найден — введите скорости вручную.") + ` Отчёт от ${D.date}.`;
 // Пластики: имя + макс. расход; хранятся в браузере (общие для всех отчётов), без хранилища — только на эту сессию
 const PKEY = "vibr-report-plastics", AKEY = "vibr-report-plastic-active";
@@ -256,6 +262,7 @@ $("pdel").addEventListener("click", () => {
   plastics = plastics.filter(x => x.name !== active); active = plastics[0].name; save(); fillPlastics(); render();
 });
 fillPlastics();
+if (NPASS > 1) $("passnote").textContent = `Синяя линия — среднее ${NPASS} проходов, по ней считаются пики и рекомендации; серые пунктиры — отдельные проходы. Если они сильно расходятся, повторите тест.`;
 $("layer").value = D.slicer.layer;
 $("quiet").value = D.quiet; $("peak").value = D.peak;
 document.addEventListener("input", e => { if (e.target.tagName === "INPUT" && e.target.id !== "pname") render(); });

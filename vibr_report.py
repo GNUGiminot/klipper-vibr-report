@@ -40,7 +40,8 @@ def say(msg):
     sys.stdout.flush()
 
 HOME = os.path.expanduser("~")
-FNAME_RE = re.compile(r"sp(\d+)_(\d+)(?:n\d+)?\.csv$")  # VIBR_TEST: vibr_sp30_00; ShakeTune: sp30_00n1
+# VIBR_TEST: vibr_sp30_00_p1 (проход 1), старые vibr_sp30_00; ShakeTune: sp30_00n1
+FNAME_RE = re.compile(r"sp(\d+)_(\d+)(?:n\d+|_p(\d+))?\.csv$")
 OWN_GLOB = "/tmp/*-vibr_sp*.csv"
 KEEP_RUNS = 5  # сколько последних прогонов хранить в папке результатов
 F_LO, F_HI = 5.0, 1000.0  # полоса, в которой суммируется энергия вибраций, Гц
@@ -119,10 +120,13 @@ def psd(x, fs, nfft):
 
 
 def analyse(files):
-    by_speed = {}
+    """Энергия вибраций по скоростям. Несколько проходов: каждый нормируется к своему максимуму,
+    затем уровни усредняются — так «громкий» проход не перетягивает среднее."""
+    by_pass = {}
     for path, member in files:
         m = FNAME_RE.search(member or path)
         speed = float("%s.%s" % (m.group(1), m.group(2)))
+        pas = int(m.group(3) or 1)
         d = load_accel(path, member)
         if len(d) < 256:
             continue
@@ -138,17 +142,23 @@ def analyse(files):
             total = p if total is None else total + p
         band = (f >= F_LO) & (f <= min(F_HI, fs / 2))
         dom = float(f[band][np.argmax(total[band])])
-        by_speed.setdefault(speed, []).append((sum(axes), axes, dom))
+        by_pass.setdefault(pas, {})[speed] = (sum(axes), axes, dom)
+    passes = sorted(by_pass)
+    speeds = sorted(set.intersection(*[set(by_pass[k]) for k in passes]))  # скорости, замеренные во всех проходах
+    pmax = dict((k, max(by_pass[k][v][0] for v in speeds)) for k in passes)
     rows = []
-    for s in sorted(by_speed):
-        v = by_speed[s]
-        e = sum(x[0] for x in v) / len(v)
-        ax = [sum(x[1][i] for x in v) / len(v) for i in range(3)]
-        rows.append({"speed": s, "energy": e, "ex": ax[0], "ey": ax[1], "ez": ax[2],
-                     "dom": max(v, key=lambda x: x[0])[2]})
-    emax = max(r["energy"] for r in rows)
+    for v in speeds:
+        recs = [by_pass[k][v] for k in passes]
+        rows.append({"speed": v,
+                     "energy": sum(x[0] for x in recs) / len(recs),
+                     "ex": sum(x[1][0] for x in recs) / len(recs),
+                     "ey": sum(x[1][1] for x in recs) / len(recs),
+                     "ez": sum(x[1][2] for x in recs) / len(recs),
+                     "dom": max(recs, key=lambda x: x[0])[2],
+                     "passes": [100.0 * by_pass[k][v][0] / pmax[k] for k in passes]})
+    lmax = max(sum(r["passes"]) / len(r["passes"]) for r in rows)
     for r in rows:
-        r["level"] = 100.0 * r["energy"] / emax
+        r["level"] = 100.0 * (sum(r["passes"]) / len(r["passes"])) / lmax
     return rows
 
 
@@ -428,14 +438,17 @@ def main():
         f.update(recommend(rows, f, sl["maxvol"], a.quiet, a.peak))
 
     peaks, step = find_peaks(rows), speed_step(rows)
+    npass = len(rows[0]["passes"])
     if not os.path.isdir(a.out):
         os.makedirs(a.out)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     write_csv(os.path.join(a.out, "vibr_summary_%s.csv" % stamp),
-              ["Скорость, мм/с", "Уровень, % от макс.", "Оценка", "Местный пик", "Энергия (сумма)", "X", "Y", "Z",
-               "Главная частота, Гц"],
+              ["Скорость, мм/с", "Уровень, % от макс.", "Оценка", "Местный пик"]
+              + ["Проход %d, %%" % (k + 1) for k in range(npass)]
+              + ["Энергия (сумма)", "X", "Y", "Z", "Главная частота, Гц"],
               [[fmt(r["speed"], 0), fmt(r["level"]), verdict(r["level"], r["speed"], peaks, step, a.quiet, a.peak),
                 "да" if r["speed"] in peaks else ""]
+               + [fmt(x) for x in r["passes"]]
                + [("%.4g" % r[k]).replace(".", ",") for k in ("energy", "ex", "ey", "ez")] + [fmt(r["dom"], 0)]
                for r in rows])
     write_csv(os.path.join(a.out, "vibr_recommendations_%s.csv" % stamp),
@@ -445,7 +458,7 @@ def main():
                 f["verdict"], fmt(f["rec"], 0) if f["rec"] else "оставить", f["note"]] for f in sl["features"]])
 
     data = {"rows": rows, "slicer": sl, "gcode": os.path.basename(gcode) if gcode else None,
-            "files": len(files), "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
+            "files": len(files), "npass": npass, "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
             "date": time.strftime("%Y-%m-%d %H:%M")}
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibr_report_template.html")
     with io.open(tpl_path, encoding="utf-8") as fh:
@@ -458,7 +471,8 @@ def main():
         archive_own(own, a.out, stamp)
     prune(a.out, KEEP_RUNS)
 
-    say("vibr_report: %d measurements, speeds %.0f-%.0f mm/s" % (len(files), rows[0]["speed"], rows[-1]["speed"]))
+    say("vibr_report: %d measurements, %d pass(es), speeds %.0f-%.0f mm/s"
+        % (len(files), npass, rows[0]["speed"], rows[-1]["speed"]))
     say("Vibration peaks: " + (", ".join("%.0f" % p for p in peaks) or "none") + " mm/s")
     say("Quiet zones: " + (", ".join(("%.0f" % z[0]) if z[0] == z[1] else ("%.0f-%.0f" % z) for z in zones(rows, a.quiet, a.peak)) or "none"))
     say("G-code: %s" % (os.path.basename(gcode) if gcode else "not found - enter speeds in the report"))

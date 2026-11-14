@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тест вибраций — инструкция</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1d232b; --muted: #5d6875; --line: #d9dee5;
+  --accent: #2f6fde; --ok: #2e9e5b; --warn: #b5790b; --bad: #c9443a;
+  --code-bg: #f0f2f5; --input: #ffffff; --hl: #fff4d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c; --card: #1c2027; --text: #e6e9ee; --muted: #9aa4b1; --line: #2e343d;
+    --accent: #6b9cf0; --ok: #4cc27f; --warn: #e3a838; --bad: #f06a5f;
+    --code-bg: #12151a; --input: #232831; --hl: #3a3220;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 6px; }
+h2 { font-size: 1.25rem; margin: 0 0 10px; }
+h3 { font-size: 1.02rem; margin: 18px 0 6px; }
+p { margin: 0 0 10px; }
+a { color: var(--accent); }
+.lead { color: var(--muted); margin-bottom: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+.step { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: .9rem; margin-right: 8px; }
+.cmd { display: flex; align-items: stretch; margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--code-bg); }
+.cmd code { flex: 1; padding: 10px 12px; font: 14px/1.5 Consolas, "Cascadia Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+.cmd button { flex: none; border: 0; border-left: 1px solid var(--line); background: var(--card); color: var(--accent); font: 600 14px system-ui, sans-serif; padding: 0 14px; cursor: pointer; min-width: 116px; }
+.cmd button:hover { background: var(--code-bg); }
+.cmd button.done { color: var(--ok); }
+.where { font-size: .85rem; color: var(--muted); margin: 10px 0 -4px; }
+.result { border-left: 3px solid var(--ok); padding: 6px 12px; margin: 10px 0; background: color-mix(in srgb, var(--ok) 8%, transparent); }
+.result b { color: var(--ok); }
+.note { border-left: 3px solid var(--warn); padding: 6px 12px; margin: 10px 0; background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.danger { border-left: 3px solid var(--bad); padding: 6px 12px; margin: 10px 0; background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.big { background: var(--hl); border: 2px solid var(--warn); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 16px; }
+label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+input[type=text], select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--text); font: inherit; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { text-align: left; vertical-align: top; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: .85rem; }
+.tbl { overflow-x: auto; }
+ol, ul { margin: 0 0 10px; padding-left: 1.3em; }
+li { margin: 3px 0; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: .85em; background: var(--card); }
+code.i { font: .92em Consolas, Menlo, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+nav ol { columns: 2; column-gap: 28px; }
+@media (max-width: 560px) { nav ol { columns: 1; } .cmd button { min-width: 92px; padding: 0 10px; } }
+details summary { cursor: pointer; font-weight: 600; }
+.small { font-size: .88rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<h1>Тест вибраций по скоростям для Klipper — пошаговая инструкция</h1>
+<p class="lead">Вы установите макрос <b>VIBR_TEST</b>: одна команда в консоли принтера проверяет, на каких скоростях он «звенит», и строит отчёт с подсказками, какие скорости поменять в OrcaSlicer. Установка — 10–15 минут один раз, тест — 4–5 минут. У каждой команды есть кнопка «Копировать»: перепечатывать ничего не нужно.</p>
+
+<section class="card">
+  <h2>Ваши данные — подставятся во все команды</h2>
+  <div class="settings">
+    <div><label for="ip">IP-адрес принтера (виден на экране принтера или в роутере)</label><input id="ip" type="text" placeholder="например, 192.168.1.50" autocomplete="off"></div>
+    <div><label for="fw">Прошивка</label><select id="fw"><option value="qidi">QIDI стоковая (Q1 Pro и др.)</option><option value="mainline">Обычный Klipper (printer_data)</option></select></div>
+  </div>
+  <p class="small" style="margin-top:10px">Хранится только в этом браузере. Пользователь SSH на стоковом QIDI — <code class="i">mks</code>.</p>
+</section>
+
+<nav class="card">
+  <h2>Содержание</h2>
+  <ol>
+    <li><a href="#before">Перед началом</a></li>
+    <li><a href="#words">Словарик</a></li>
+    <li><a href="#install">Установка с интернетом</a></li>
+    <li><a href="#offline">Установка без интернета</a></li>
+    <li><a href="#cfg">Строка в printer.cfg (обязательно)</a></li>
+    <li><a href="#test">Запуск теста</a></li>
+    <li><a href="#report">Скачать и прочитать отчёт</a></li>
+    <li><a href="#compare">Сравнение тестов, новая серия</a></li>
+    <li><a href="#update">Обновление и удаление</a></li>
+    <li><a href="#trouble">Если что-то не так</a></li>
+    <li><a href="#limits">Ограничения</a></li>
+  </ol>
+</nav>
+
+<section class="card" id="before">
+  <h2>1. Перед началом — проверьте</h2>
+  <ul>
+    <li>Принтер на Klipper с акселерометром. Для стокового QIDI Q1 Pro всё нужное уже есть.</li>
+    <li>Fluidd или Mainsail открывается в браузере по IP принтера.</li>
+    <li>Вы знаете пароль пользователя <code class="i">mks</code> для SSH.</li>
+    <li>На компьютере Windows 10/11 — программы <code class="i">ssh</code> и <code class="i">scp</code> уже встроены, ставить ничего не нужно.</li>
+    <li>На принтере лежит G-code, нарезанный в OrcaSlicer вашим обычным профилем, — из него отчёт возьмёт текущие скорости.</li>
+  </ul>
+  <div class="note"><b>Проверено:</b> QIDI Q1 Pro, прошивка 4.4.20. <b>Не тестировалось на прошивке QIDI v6.1.1</b> — там могут быть другие папки и Python. Если запустите — сообщите, что вышло.</div>
+</section>
+
+<section class="card" id="words">
+  <h2>2. Словарик</h2>
+  <div class="tbl"><table>
+    <tr><th>Слово</th><th>Что это</th></tr>
+    <tr><td>PowerShell</td><td>окно команд Windows. Открыть: <kbd>Win</kbd> + <kbd>X</kbd> → «Терминал» (или «Windows PowerShell»).</td></tr>
+    <tr><td>SSH</td><td>вход в принтер по сети через окно команд. Команды после входа выполняются уже на принтере.</td></tr>
+    <tr><td>Консоль Fluidd</td><td>строка ввода команд Klipper в веб-интерфейсе принтера (в Fluidd — блок «Консоль» на главной странице).</td></tr>
+    <tr><td>printer.cfg</td><td>главный файл настроек Klipper. В Fluidd: значок <b>{…}</b> «Конфигурация» в левом меню.</td></tr>
+    <tr><td>[include …]</td><td>строка в printer.cfg, которая подключает другой файл настроек.</td></tr>
+    <tr><td>Вставка в окне команд</td><td>правая кнопка мыши или <kbd>Ctrl</kbd> + <kbd>V</kbd>, затем <kbd>Enter</kbd>. Пароль при вводе не отображается — это нормально.</td></tr>
+  </table></div>
+</section>
+
+<section class="card" id="install">
+  <h2>3. Установка, если у принтера есть интернет</h2>
+
+  <h3><span class="step">1</span>Войдите в принтер по SSH</h3>
+  <p>Откройте PowerShell на компьютере и выполните:</p>
+  <div class="where">PowerShell на компьютере</div>
+  <div class="cmd"><code data-t="ssh mks@{IP}"></code><button>Копировать</button></div>
+  <p>При первом входе спросят <i>«Are you sure you want to continue connecting?»</i> — напишите <code class="i">yes</code> и нажмите <kbd>Enter</kbd>. Затем введите пароль.</p>
+  <div class="result"><b>Должно получиться:</b> строка вида <code class="i">mks@…:~$</code> — вы на принтере.</div>
+
+  <h3><span class="step">2</span>Запустите установку</h3>
+  <div class="where">SSH на принтере</div>
+  <div class="cmd"><code data-t="curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main/install.sh | bash"></code><button>Копировать</button></div>
+  <p>Установщик проверит акселерометр, нужное расширение Klipper и Python, скачает файлы в папку <code class="i">~/klipper-vibr-report</code> и положит файл макроса в папку настроек. <b>printer.cfg он не меняет.</b></p>
+  <div class="result"><b>Должно получиться:</b> в конце строки <code class="i">[vibr-report] Осталось один раз вручную…</code> без слова «ОШИБКА». Если есть «ОШИБКА» — смотрите раздел <a href="#trouble">«Если что-то не так»</a>.</div>
+  <p>Окно SSH можно закрыть командой <code class="i">exit</code>. Дальше — <a href="#cfg"><b>шаг с printer.cfg</b></a>, он обязателен.</p>
+</section>
+
+<section class="card" id="offline">
+  <h2>4. Установка без интернета на принтере</h2>
+  <ol>
+    <li>На компьютере откройте <a href="https://github.com/GNUGiminot/klipper-vibr-report">страницу проекта</a> → зелёная кнопка <b>Code</b> → <b>Download ZIP</b>, распакуйте архив.</li>
+    <li>Откройте распакованную папку в Проводнике, нажмите <kbd>Shift</kbd> + правая кнопка мыши по пустому месту → «Открыть окно PowerShell здесь» (или «Открыть в Терминале»).</li>
+    <li>Выполните по очереди три команды. Пароль <code class="i">mks</code> спросят у каждой.</li>
+  </ol>
+  <div class="where">PowerShell в папке с файлами · создать папку на принтере</div>
+  <div class="cmd"><code data-t='ssh mks@{IP} "mkdir -p ~/klipper-vibr-report"'></code><button>Копировать</button></div>
+  <div class="where">PowerShell в папке с файлами · скопировать файлы на принтер</div>
+  <div class="cmd"><code data-t="scp vibr_test.cfg vibr_report.sh vibr_report.py vibr_report_template.html install.sh uninstall.sh mks@{IP}:~/klipper-vibr-report/"></code><button>Копировать</button></div>
+  <div class="where">PowerShell в папке с файлами · запустить установщик на принтере</div>
+  <div class="cmd"><code data-t='ssh mks@{IP} "bash ~/klipper-vibr-report/install.sh"'></code><button>Копировать</button></div>
+  <div class="result"><b>Должно получиться:</b> как в разделе 3 — <code class="i">Осталось один раз вручную…</code> без «ОШИБКА». Интернет установщику не нужен: файлы уже на принтере.</div>
+  <div class="note">Не открывайте и не пересохраняйте файлы <code class="i">.sh</code> в Блокноте Windows: он может испортить переносы строк, и скрипт перестанет запускаться (ошибка <code class="i">$'\r': command not found</code>).</div>
+</section>
+
+<section class="big" id="cfg">
+  <h2>5. Обязательно: добавьте строку в printer.cfg</h2>
+  <p>Без этого шага Klipper не увидит макрос. Делается один раз, в браузере:</p>
+  <ol>
+    <li>Откройте Fluidd (или Mainsail) по адресу <b data-t="http://{IP}"></b>.</li>
+    <li>Левое меню → <b>{…} Конфигурация</b> → файл <b>printer.cfg</b>.</li>
+    <li>Найдите в начале файла строки, которые начинаются с <code class="i">[include</code>. Встаньте в конец последней из них и нажмите <kbd>Enter</kbd> — получится новая пустая строка.</li>
+    <li>Скопируйте строку ниже и вставьте её туда (<kbd>Ctrl</kbd> + <kbd>V</kbd>):</li>
+  </ol>
+  <div class="where">printer.cfg — новая строка рядом с другими [include …]</div>
+  <div class="cmd"><code data-t="[include vibr_test.cfg]"></code><button>Копировать</button></div>
+  <ol start="5">
+    <li>Нажмите <b>«Сохранить и перезапустить»</b> (Save &amp; Restart) вверху редактора.</li>
+  </ol>
+  <div class="result"><b>Должно получиться:</b> принтер перезапустится, статус — «Готов» (Ready), в консоли команда <code class="i">VIBR_TEST</code> подсказывается при вводе.</div>
+  <div class="danger">Если после перезапуска ошибка вида <i>«Include file … vibr_test.cfg does not exist»</i> — установка не прошла до конца. Уберите добавленную строку, сохраните и повторите раздел 3 или 4.</div>
+</section>
+
+<section class="card" id="test">
+  <h2>6. Запуск теста</h2>
+  <div class="danger"><b>Перед тестом:</b> стол пустой, принтер не печатает. Голова будет ездить по квадрату 80×80 мм в центре стола на высоте 20 мм. Сопло греть не нужно. Если что-то пойдёт не так — аварийная остановка (Emergency Stop) в Fluidd.</div>
+  <h3><span class="step">1</span>Обычный тест</h3>
+  <div class="where">Консоль Fluidd/Mainsail</div>
+  <div class="cmd"><code data-t="VIBR_TEST"></code><button>Копировать</button></div>
+  <div class="result"><b>Должно получиться:</b> через 4–5 минут в консоли строки <code class="i">vibr_report: … Vibration peaks: … Quiet zones: …</code> и <code class="i">VIBR_TEST: done</code>.</div>
+
+  <h3>Другие варианты (по желанию)</h3>
+  <div class="where">После регулировки механики (подтянули ремни, что-то закрепили) — начать новую серию</div>
+  <div class="cmd"><code data-t="VIBR_TEST CLEAN=1"></code><button>Копировать</button></div>
+  <div class="where">Разрешить советовать скорость выше вашей (по умолчанию отчёт только снижает)</div>
+  <div class="cmd"><code data-t="VIBR_TEST ALLOW_UP=1"></code><button>Копировать</button></div>
+  <div class="where">Все параметры со значениями по умолчанию — скопируйте и поменяйте нужное</div>
+  <div class="cmd"><code data-t="VIBR_TEST PASSES=1 MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300 CLEAN=0 QUIET=35 PEAK=60 ALLOW_UP=0"></code><button>Копировать</button></div>
+  <div class="tbl"><table>
+    <tr><th>Параметр</th><th>По умолчанию</th><th>Что значит</th></tr>
+    <tr><td>PASSES</td><td>1</td><td>сколько раз пройти весь диапазон в одном тесте (проходы усредняются)</td></tr>
+    <tr><td>MIN_SPEED / MAX_SPEED</td><td>30 / 300</td><td>диапазон скоростей, мм/с; верх — с запасом над вашими рабочими скоростями</td></tr>
+    <tr><td>SPEED_INCREMENT</td><td>5</td><td>шаг, мм/с; 3 — точнее, но дольше</td></tr>
+    <tr><td>ACCEL</td><td>5000</td><td>ускорение на ходах теста, мм/с² (не выше max_accel принтера)</td></tr>
+    <tr><td>SIZE / Z_HEIGHT</td><td>80 / 20</td><td>сторона квадрата и высота головы, мм</td></tr>
+    <tr><td>TRAVEL_SPEED</td><td>300</td><td>скорость холостых перемещений, мм/с</td></tr>
+    <tr><td>CLEAN</td><td>0</td><td>1 — «чистая» проверка: тест начинает новую серию, старые тесты не попадают в сравнение</td></tr>
+    <tr><td>QUIET / PEAK</td><td>35 / 60</td><td>нижний и верхний пороги «звона», % (см. раздел 7)</td></tr>
+    <tr><td>ALLOW_UP</td><td>0</td><td>1 — можно советовать скорость выше той, что в профиле</td></tr>
+  </table></div>
+  <p class="small">Если голова на максимальной скорости не успевает разогнаться (постоянная скорость меньше 70 % стороны квадрата), в консоли будет предупреждение: поднимите ACCEL или SIZE.</p>
+</section>
+
+<section class="card" id="report">
+  <h2>7. Скачать и прочитать отчёт</h2>
+  <ol>
+    <li>Fluidd → <b>{…} Конфигурация</b> → папка <b>vibr_report_results</b>.</li>
+    <li>Скачайте самый свежий файл <b>vibr_report_&lt;дата&gt;.html</b> (по нажатию правой кнопкой или кнопкой загрузки) и откройте его в браузере. Интернет не нужен.</li>
+  </ol>
+  <h3>Что в отчёте</h3>
+  <ul>
+    <li><b>График</b> «скорость → вибрации». Зелёные полосы — тихие скорости, красные крестики — пики (их избегать), вертикальные линии с номерами — ваши скорости из профиля.</li>
+    <li><b>Таблица «Что поменять в OrcaSlicer»</b>: сколько стоит сейчас, сколько получится на деле с учётом расхода пластика, оценка и что поставить (<b>↓</b> — ниже вашей, <b>↑</b> — выше).</li>
+    <li><b>Пластики:</b> над таблицей добавьте свои пластики с их максимальным расходом из OrcaSlicer (Филамент → Макс. объёмная скорость). Тест от пластика не зависит, переключение пересчитывает таблицу сразу.</li>
+  </ul>
+  <h3>Пороги «звона» — что это и кто их выставляет</h3>
+  <p>Уровень вибраций считается в процентах от самой «шумной» скорости <b>вашего же</b> теста, поэтому шкала подстраивается под каждый принтер сама. Пороги — условные границы на этой шкале, по умолчанию 35 % и 60 %. Подбирать их не нужно; поменять можно внизу отчёта или параметрами QUIET и PEAK.</p>
+  <div class="tbl"><table>
+    <tr><th>Оценка</th><th>Когда</th><th>Что делать</th></tr>
+    <tr><td>тихо</td><td>ниже нижнего порога (35 %) и рядом нет пика</td><td>оставить</td></tr>
+    <tr><td>повышенные</td><td>между порогами или на соседнем шаге с пиком</td><td>лучше сдвинуть</td></tr>
+    <tr><td>резонанс</td><td>выше верхнего порога (60 %) или прямо на пике</td><td>сдвинуть обязательно</td></tr>
+  </table></div>
+  <h3>Скорость вниз или вверх</h3>
+  <p>По умолчанию отчёт <b>только снижает</b> скорость: если вы сами занизили, например, внешние стенки ради качества, он не предложит их поднять. Если ниже тихих скоростей нет, в пояснении будет написано, какая ближайшая тихая есть выше. Разрешить повышение — галочкой «Разрешить повышать скорость» в отчёте или параметром <code class="i">ALLOW_UP=1</code>. Выше предела расхода пластика отчёт скорость не предлагает никогда.</p>
+  <h3>Внести в OrcaSlicer</h3>
+  <p>Профиль процесса → вкладка «Скорость» → значения из колонки «Поставить» → сохранить профиль, перенарезать модель.</p>
+</section>
+
+<section class="card" id="compare">
+  <h2>8. Сравнение тестов и новая серия</h2>
+  <p>Высота пиков от дня к дню меняется заметно, а их места — нет. Прогоните тест в разные дни и соберите общий отчёт — голова при этом не двигается:</p>
+  <div class="where">Консоль Fluidd/Mainsail</div>
+  <div class="cmd"><code data-t="VIBR_COMPARE RUNS=3"></code><button>Копировать</button></div>
+  <div class="result"><b>Должно получиться:</b> за несколько секунд новый отчёт в <b>vibr_report_results</b>. Синяя линия — среднее, серые пунктиры — отдельные тесты с датами.</div>
+  <p>Серия — это тесты после последнего <code class="i">VIBR_TEST CLEAN=1</code>. После регулировки механики начните новую серию, чтобы старые замеры не смешивались с новыми.</p>
+</section>
+
+<section class="card" id="update">
+  <h2>9. Обновление и удаление</h2>
+  <h3>Обновить (через SSH на принтере)</h3>
+  <div class="cmd"><code data-t="curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main/install.sh | bash"></code><button>Копировать</button></div>
+  <p>Затем «Перезапустить» в Fluidd (или <code class="i">FIRMWARE_RESTART</code> в консоли).</p>
+  <h3>Удалить</h3>
+  <ol>
+    <li>Сначала уберите строку <code class="i">[include vibr_test.cfg]</code> из printer.cfg и сохраните.</li>
+    <li>Затем через SSH на принтере:</li>
+  </ol>
+  <div class="cmd"><code data-t="bash ~/klipper-vibr-report/uninstall.sh"></code><button>Копировать</button></div>
+  <p class="small">Отчёты в vibr_report_results остаются.</p>
+</section>
+
+<section class="card" id="trouble">
+  <h2>10. Если что-то не так</h2>
+  <div class="tbl"><table>
+    <tr><th>Что видите</th><th>Причина и что сделать</th></tr>
+    <tr><td><code class="i">Unknown command: "VIBR_TEST"</code></td><td>Нет строки в printer.cfg или принтер не перезапущен — раздел 5.</td></tr>
+    <tr><td><code class="i">ssh: connect … timed out / refused</code></td><td>Неверный IP или принтер в другой сети. Проверьте, что Fluidd открывается по этому IP.</td></tr>
+    <tr><td><code class="i">Permission denied</code> при входе</td><td>Неверный пароль пользователя mks (при вводе он не отображается — это нормально).</td></tr>
+    <tr><td>Установщик: <code class="i">нет расширения gcode_shell_command</code></td><td>На обычном Klipper поставьте его через KIAUH → Advanced → G-Code Shell Command и повторите установку.</td></tr>
+    <tr><td>Установщик: <code class="i">не найден Python с numpy</code></td><td>Выполните на принтере команду ниже, затем повторите установку.</td></tr>
+    <tr><td><code class="i">$'\r': command not found</code></td><td>Файл .sh испорчен Блокнотом Windows. Скачайте ZIP заново и не открывайте .sh в Блокноте.</td></tr>
+    <tr><td><code class="i">found 0 measurements</code></td><td>Тест не прошёл до конца (остановка, перезагрузка). Запустите VIBR_TEST ещё раз.</td></tr>
+    <tr><td>Предупреждение <code class="i">only N% of each side is at constant speed</code></td><td>Поднимите ACCEL или SIZE, иначе на высоких скоростях замер менее точный.</td></tr>
+    <tr><td>Ошибка Klipper после перезапуска, упоминает vibr_test.cfg</td><td>Уберите строку include, сохраните, переустановите (раздел 3 или 4).</td></tr>
+  </table></div>
+  <div class="where">SSH на принтере · поставить numpy (если установщик его не нашёл)</div>
+  <div class="cmd"><code data-t="~/klippy-env/bin/pip install numpy"></code><button>Копировать</button></div>
+  <div class="where">SSH на принтере · проверить, на месте ли файл макроса</div>
+  <div class="cmd"><code data-t="ls -l {CFG}/vibr_test.cfg"></code><button>Копировать</button></div>
+</section>
+
+<section class="card" id="limits">
+  <h2>11. Ограничения — что тест не видит</h2>
+  <ul>
+    <li><b>Только направления X и Y.</b> На CoreXY диагональные ходы (45°) крутит один мотор, и резонансы там могут быть на других скоростях. Заполнение часто идёт под 45°.</li>
+    <li><b>Условия:</b> вентиляторы, нагрев и температура камеры меняют картину. Тест идёт на холодном принтере.</li>
+    <li><b>Шкала относительная:</b> 100 % — самая шумная скорость этого теста, а не «плохо вообще».</li>
+    <li><b>Причину не ищет:</b> отчёт показывает, где звенит, но не что дребезжит.</li>
+    <li><b>Сначала шейперы:</b> калибровка шейперов — до этого теста.</li>
+  </ul>
+  <p class="small">Движения теста взяты из ShakeTune 2.6.1 (Frix-x, GPL-3.0). Проект: <a href="https://github.com/GNUGiminot/klipper-vibr-report">github.com/GNUGiminot/klipper-vibr-report</a> · автор: Giminot — <a href="https://t.me/Giminot">t.me/Giminot</a></p>
+</section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без хранилища */ } },
+};
+const CFG = { qidi: "~/klipper_config", mainline: "~/printer_data/config" };
+function fill() {
+  const ip = $("ip").value.trim() || "IP_ПРИНТЕРА";
+  const cfg = CFG[$("fw").value];
+  document.querySelectorAll("[data-t]").forEach(el => {
+    el.textContent = el.dataset.t.replace(/\{IP\}/g, ip).replace(/\{CFG\}/g, cfg);
+  });
+}
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {  // file:// и старые браузеры
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  btn.textContent = "Скопировано"; btn.classList.add("done");
+  setTimeout(() => { btn.textContent = "Копировать"; btn.classList.remove("done"); }, 1500);
+}
+document.querySelectorAll(".cmd button").forEach(b => {
+  b.type = "button";
+  b.addEventListener("click", () => {
+    const code = b.parentElement.querySelector("code");
+    if (code.textContent.includes("IP_ПРИНТЕРА") && !$("ip").value.trim()) {
+      $("ip").focus(); $("ip").scrollIntoView({ block: "center" });
+      b.textContent = "Введите IP"; setTimeout(() => { b.textContent = "Копировать"; }, 1500); return;
+    }
+    copy(code.textContent, b);
+  });
+});
+$("ip").value = store.get("vibr-guide-ip") || "";
+$("fw").value = store.get("vibr-guide-fw") || "qidi";
+$("ip").addEventListener("input", () => { store.set("vibr-guide-ip", $("ip").value.trim()); fill(); });
+$("fw").addEventListener("change", () => { store.set("vibr-guide-fw", $("fw").value); fill(); });
+fill();
+</script>
+</body>
+</html>

@@ -396,7 +396,7 @@ def zones(rows, quiet, peak=60.0):
     return out
 
 
-def recommend(rows, feat, maxvol, quiet, peak):
+def recommend(rows, feat, maxvol, quiet, peak, allow_up=False):
     v = feat["speed"]
     cap = flow_cap(maxvol, feat["lw"], feat["layer"]) if feat["lw"] else None
     res = {"cap": cap, "eff": None, "level": None, "verdict": "", "rec": None, "note": ""}
@@ -434,6 +434,13 @@ def recommend(rows, feat, maxvol, quiet, peak):
     if not cand:
         res["note"] += "тихих скоростей ниже предела расхода нет: оставьте или снизьте скорость."
         return res
+    down = [c for c in cand if c <= eff]
+    if not allow_up:  # по умолчанию только снижаем: скорость из профиля могли занизить ради качества
+        if not down:
+            res["note"] += ("ниже тихих скоростей нет; ближайшая тихая выше — %.0f мм/с "
+                            "(разрешите повышение, если это допустимо)." % min(cand))
+            return res
+        cand = down
     best = min(cand, key=lambda s: (abs(s - eff), -s))
     res["rec"] = best
     for a, b in zones(rows, quiet, peak):
@@ -468,6 +475,8 @@ def main():
     ap.add_argument("--accel", type=int, default=5000, help="ACCEL теста (для подписи), по умолчанию 5000")
     ap.add_argument("--quiet", type=float, default=35.0, help="порог «тихо», %% от максимума (35)")
     ap.add_argument("--peak", type=float, default=60.0, help="порог «резонанс», %% от максимума (60)")
+    ap.add_argument("--allow-up", action="store_true",
+                    help="разрешить советовать скорость выше текущей (по умолчанию только снижение)")
     ap.add_argument("--compare", type=int, metavar="N",
                     help="без нового теста: отчёт по последним N тестам текущей серии (среднее)")
     ap.add_argument("--clean", action="store_true",
@@ -513,7 +522,7 @@ def main():
     cfg = read_slicer(gcode) if gcode else {}
     sl = slicer_inputs(cfg, a.maxvol)
     for f in sl["features"]:
-        f.update(recommend(rows, f, sl["maxvol"], a.quiet, a.peak))
+        f.update(recommend(rows, f, sl["maxvol"], a.quiet, a.peak, a.allow_up))
 
     peaks, step = find_peaks(rows), speed_step(rows)
     npass = len(labels)
@@ -536,7 +545,7 @@ def main():
                 f["verdict"], fmt(f["rec"], 0) if f["rec"] else "оставить", f["note"]] for f in sl["features"]])
 
     data = {"rows": rows, "slicer": sl, "gcode": os.path.basename(gcode) if gcode else None,
-            "files": len(recs), "npass": npass, "labels": labels, "compare": is_cmp, "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
+            "files": len(recs), "npass": npass, "labels": labels, "compare": is_cmp, "allow_up": bool(a.allow_up), "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
             "date": time.strftime("%Y-%m-%d %H:%M")}
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibr_report_template.html")
     with io.open(tpl_path, encoding="utf-8") as fh:

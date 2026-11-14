@@ -1,6 +1,6 @@
 # klipper-vibr-report — на каких скоростях принтер «звенит»
 
-Одна команда в консоли Klipper — `VIBR_TEST` — дважды гоняет голову по квадрату на скоростях от 30 до 300 мм/с, записывает вибрации акселерометром и строит отчёт: график «скорость → вибрации», пики, тихие зоны и **таблицу по скоростям вашего профиля OrcaSlicer — что сейчас, тихо или резонанс, что поставить**. Отчёт — одна HTML-страница, скачивается из Fluidd/Mainsail и открывается в любом браузере без интернета.
+Одна команда в консоли Klipper — `VIBR_TEST` — гоняет голову по квадрату на скоростях от 30 до 300 мм/с, записывает вибрации акселерометром и строит отчёт: график «скорость → вибрации», пики, тихие зоны и **таблицу по скоростям вашего профиля OrcaSlicer — что сейчас, тихо или резонанс, что поставить**. Отчёт — одна HTML-страница, скачивается из Fluidd/Mainsail и открывается в любом браузере без интернета.
 
 - Сделано и проверено на **QIDI Q1 Pro со стоковой прошивкой** (Klipper QIDI на Python 2.7). Работает и на обычном Klipper.
 - **ShakeTune не нужен** и не мешает: свои имена макросов и файлов. Движения головы — как у `VIBRATIONS_CALIBRATION` из ShakeTune 2.6.1.
@@ -32,32 +32,35 @@ curl -fsSL https://raw.githubusercontent.com/GNUGiminot/klipper-vibr-report/main
 VIBR_TEST
 ```
 
-Оси захоумятся сами. Тест делает 2 прохода и занимает 8–10 минут (один проход — 4–5 минут).
+Оси захоумятся сами. Тест занимает 4–5 минут.
 
 Та же команда со всеми параметрами — скопируйте и меняйте нужные значения:
 
 ```
-VIBR_TEST PASSES=2 MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300
+VIBR_TEST PASSES=1 MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300 CLEAN=0
 ```
 
 Что они значат (все необязательные, не указанные берутся по умолчанию):
 
 | Параметр | По умолчанию | Что это |
 |---|---|---|
-| `PASSES` | 2 | сколько раз пройти весь диапазон; отчёт усредняет проходы. `1` — быстрая проверка |
+| `PASSES` | 1 | сколько раз пройти весь диапазон в одном тесте (проходы усредняются; на проверочном принтере проходы подряд совпадали в пределах 2 %) |
 | `MIN_SPEED` / `MAX_SPEED` | 30 / 300 | диапазон скоростей, мм/с |
 | `SPEED_INCREMENT` | 5 | шаг, мм/с (3 — точнее, но дольше) |
 | `ACCEL` | 5000 | ускорение на ходах теста (не выше `max_accel` принтера) |
 | `SIZE` | 80 | сторона квадрата, мм |
 | `Z_HEIGHT` | 20 | высота головы, мм |
 | `TRAVEL_SPEED` | 300 | холостые перемещения, мм/с |
+| `CLEAN` | 0 | `1` — «чистая» проверка: этот тест начинает новую серию, прежние тесты в `VIBR_COMPARE` не попадают. Ставьте после того, как подтянули ремни, что-то закрепили или поменяли |
 | `CHIP` | — | имя акселерометра, если их несколько |
 
-Пример: `VIBR_TEST MAX_SPEED=250 SPEED_INCREMENT=3`, быстрый одиночный проход — `VIBR_TEST PASSES=1`.
+Примеры: `VIBR_TEST MAX_SPEED=250 SPEED_INCREMENT=3`; после регулировки механики — `VIBR_TEST CLEAN=1`.
+
+Если при заданных `SIZE` и `ACCEL` голова на максимальной скорости идёт с постоянной скоростью меньше 70 % стороны квадрата, макрос предупредит в консоли: тогда поднимите `ACCEL` или `SIZE` (так же советует ShakeTune).
 
 ## Результат
 
-Папка конфигурации → `vibr_report_results/` (хранятся 5 последних прогонов):
+Папка конфигурации → `vibr_report_results/` (хранятся 6 последних тестов с замерами и отдельно 6 последних отчётов сравнения):
 
 | Файл | Что внутри |
 |---|---|
@@ -70,9 +73,25 @@ CSV — с разделителем `;` и десятичной запятой (
 
 **Пластик.** Тест от пластика не зависит — голова ходит без подачи. От пластика зависит только максимальный объёмный расход, а значит, с какой скоростью слайсер реально напечатает линию. Скорости и расход отчёт берёт из самого свежего G-code. В отчёте есть список пластиков: добавьте свои (например, PC 4, ABS 17 мм³/с) — он сохранится в браузере, и переключение пересчитывает таблицу без нового теста.
 
-**Как читать.** Уровень — энергия вибраций в процентах от самой «шумной» скорости теста. «Тихо» — не выше 35 % и не рядом с пиком (±1 шаг теста). Пики ищутся как в ShakeTune: и главный резонанс, и небольшие местные бугры. «Фактически» — скорость с учётом предела расхода. «Поставить» — ближайшая тихая скорость не выше предела расхода, с запасом от края резонанса.
+**Как читать.** Уровень — энергия вибраций в процентах от самой «шумной» скорости теста. Это сравнение скоростей между собой, а не абсолютная величина. Оценку дают два порога (меняются в отчёте):
 
-**Проходы.** Высота пиков от прогона к прогону заметно меняется (на проверочном принтере пик 95 мм/с был 39 % в одном прогоне и 100 % в другом), а места пиков — нет. Поэтому тест по умолчанию делает 2 прохода: каждый проход приводится к своему максимуму, уровни усредняются, и пики, тихие зоны и рекомендации считаются по среднему. На графике отдельные проходы видны серыми пунктирами — если они сильно расходятся, повторите тест. После того как подтянули ремни или что-то закрепили, тест нужно повторить в любом случае.
+- **Нижний порог — «тихо» (по умолчанию 35 %).** Скорость тихая, если её уровень не выше порога и рядом (±1 шаг теста) нет пика. Чем меньше порог, тем строже отбор тихих скоростей.
+- **Верхний порог — «резонанс» (по умолчанию 60 %).** Выше него вибрации сильные — на стенках жди ряби. Между порогами — «повышенные»: печатать можно, но лучше сдвинуть.
+- **Пик** (красный крестик) — местный бугор кривой, как пики у ShakeTune. Скорость на пике считается резонансом при любой высоте, соседние шаги — «повышенными».
+
+«Фактически» — скорость с учётом предела расхода. «Поставить» — ближайшая тихая скорость не выше предела расхода, с запасом от края резонанса.
+
+## Сравнение тестов и «чистая» серия
+
+На проверочном принтере два прохода подряд совпадали в пределах 2 %, а тесты в разные дни — нет: пик 95 мм/с был 39 %, 100 % и 40 % от максимума, хотя места пиков (75, 90–95, 150, 180–185 мм/с) не менялись. Поэтому полезнее сравнивать тесты из разных сеансов, чем гонять проходы подряд:
+
+```
+VIBR_COMPARE RUNS=3
+```
+
+Голова не двигается: макрос собирает один отчёт из последних `RUNS` тестов (по умолчанию 3) текущей серии. Каждый тест приводится к своему максимуму, уровни усредняются, пики и рекомендации считаются по среднему. На графике отдельные тесты — серые пунктиры с датами. Сильное расхождение — признак того, что механика меняется от раза к разу (температура, натяжение, что-то болтается).
+
+Серия — это тесты после последнего `VIBR_TEST CLEAN=1`. Подтянули ремни или закрепили провод — запустите тест с `CLEAN=1`: старые замеры останутся в архиве, но в сравнение больше не попадут.
 
 ## Установка вручную (не сток, другой Klipper — с нуля)
 
@@ -143,7 +162,21 @@ VIBRATIONS_CALIBRATION DIRECTION=XY MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL_CHIP=d
 
 ## Проверено
 
-QIDI Q1 Pro, прошивка 4.4.20, 13.11.2026: установка, `VIBR_TEST` (4,5 мин), отчёт из консоли Klipper; отчёт из замеров ShakeTune 2.6.1. Не проверено на обычном Klipper и с G-code из QIDI Studio / Bambu Studio (ключи скоростей у них, скорее всего, те же, что в OrcaSlicer).
+QIDI Q1 Pro, прошивка 4.4.20, 13–14.11.2026: установка с GitHub, `VIBR_TEST` в один (4,5 мин) и два прохода (9 мин), отчёт из консоли Klipper, сравнение тестов; отчёт из замеров ShakeTune 2.6.1.
+
+Не проверено: **прошивка QIDI v6.1.1** (на ней может быть другой Klipper, папки и Python), обычный Klipper, G-code из QIDI Studio / Bambu Studio (ключи скоростей у них, скорее всего, те же, что в OrcaSlicer). Если запустите — напишите, что вышло.
+
+## Ограничения: что тест не видит
+
+- **Только направления X и Y.** Голова ходит по квадрату вдоль осей. На CoreXY диагональные ходы (45°) крутит один мотор, и резонансы там могут быть на других скоростях — а заполнение часто идёт как раз под 45°. Новый ShakeTune (`CREATE_VIBRATIONS_PROFILE`) для этого гоняет голову во многих направлениях и строит полярный график. Здесь диагоналей пока нет.
+- **Разгон и торможение в замере.** Энергия считается по всему ходу, включая разгон. При `SIZE=80`, `ACCEL=5000` на 300 мм/с постоянная скорость держится около 78 % стороны — по совету ShakeTune этого достаточно (больше 70 %); при меньших значениях макрос предупредит.
+- **Условия теста.** Вентиляторы, нагрев и температура камеры меняют картину. Тест идёт без печати и с холодным соплом — на горячем принтере с работающим обдувом пики могут сместиться. Если печатаете в горячей камере, прогоните тест в ней.
+- **Ускорение.** Тест идёт на 5000 мм/с². На коротких отрезках голова не успевает разогнаться до заданной скорости, поэтому результат важнее всего для длинных прямых: внешние стенки и заполнение на крупных деталях.
+- **Относительная шкала.** 100 % — самая шумная скорость этого теста, а не «плохо вообще». Сравнивать абсолютную громкость двух принтеров по отчёту нельзя.
+- **Причину не ищет.** Отчёт говорит, на каких скоростях звенит, но не почему. Найти, что дребезжит, помогает удержание частоты (`TEST_RESONANCES` или `EXCITATE_AXIS_AT_FREQ` в ShakeTune), а убрать резонанс моторов — настройка драйверов TMC (ShakeTune советует `klipper_tmc_autotune`).
+- **Шейпер.** Тест идёт с вашим включённым шейпером — как и печать. Сначала откалибруйте шейперы, тест скоростей — последний шаг.
+
+Почему не взять новый ShakeTune целиком: ему нужен Python 3.9 и новее, а на стоковом QIDI Klipper работает на Python 2.7.
 
 ## Лицензия
 
@@ -157,7 +190,7 @@ GPL-3.0. Движения теста перенесены из `VIBRATIONS_CALIB
 
 ## klipper-vibr-report — at which speeds does your printer ring?
 
-One console command — `VIBR_TEST` — moves the toolhead twice around a square at 30–300 mm/s, records vibrations with the accelerometer and builds a report: a "speed → vibrations" chart, vibration peaks, quiet speed zones and **a table for the speeds of your OrcaSlicer profile — current value, quiet or resonance, what to set**. The report is a single HTML page: download it from Fluidd/Mainsail and open it in any browser, no internet needed.
+One console command — `VIBR_TEST` — moves the toolhead around a square at 30–300 mm/s, records vibrations with the accelerometer and builds a report: a "speed → vibrations" chart, vibration peaks, quiet speed zones and **a table for the speeds of your OrcaSlicer profile — current value, quiet or resonance, what to set**. The report is a single HTML page: download it from Fluidd/Mainsail and open it in any browser, no internet needed.
 
 - Made and tested on **stock QIDI Q1 Pro** (QIDI Klipper on Python 2.7). Works on mainline Klipper too.
 - **ShakeTune is not required** and does not conflict (own macro and file names). The motion pattern is the same as ShakeTune 2.6.1 `VIBRATIONS_CALIBRATION`.
@@ -184,30 +217,43 @@ Empty bed, not printing. In the Fluidd/Mainsail console:
 VIBR_TEST
 ```
 
-The printer homes itself. The test makes 2 passes and takes 8–10 minutes (one pass: 4–5 minutes). The same command with every parameter spelled out — copy it and change what you need:
+The printer homes itself. The test takes 4–5 minutes. The same command with every parameter spelled out — copy it and change what you need:
 
 ```
-VIBR_TEST PASSES=2 MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300
+VIBR_TEST PASSES=1 MIN_SPEED=30 MAX_SPEED=300 SPEED_INCREMENT=5 ACCEL=5000 SIZE=80 Z_HEIGHT=20 TRAVEL_SPEED=300 CLEAN=0
 ```
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `PASSES` | 2 | full sweeps; the report averages them. `1` = quick check |
+| `PASSES` | 1 | full sweeps in one test, averaged (back-to-back passes agreed within 2 % on the test printer) |
 | `MIN_SPEED` / `MAX_SPEED` | 30 / 300 | speed range, mm/s |
 | `SPEED_INCREMENT` | 5 | step, mm/s (3 is finer but slower) |
 | `ACCEL` | 5000 | acceleration of the test moves (capped by the printer `max_accel`) |
 | `SIZE` | 80 | square side, mm |
 | `Z_HEIGHT` | 20 | toolhead height, mm |
 | `TRAVEL_SPEED` | 300 | travel moves, mm/s |
+| `CLEAN` | 0 | `1` = clean check: this test starts a new series, older tests are left out of `VIBR_COMPARE`. Use it after tightening belts or other mechanical changes |
 | `CHIP` | — | accelerometer name if you have several |
+
+If the toolhead spends less than 70 % of a square side at constant speed at `MAX_SPEED`, the macro warns you — raise `ACCEL` or `SIZE` (ShakeTune gives the same advice).
 
 ### Results
 
-Config folder → `vibr_report_results/` (last 5 runs are kept): `vibr_report_<date>.html` (chart, peaks, quiet zones, slicer advice), `vibr_recommendations_<date>.csv`, `vibr_summary_<date>.csv`, `vibr_data_<date>.tar.gz` (raw measurements). The report UI and CSV files are in Russian; console messages are in English.
+Config folder → `vibr_report_results/` (the last 6 tests with raw data and, separately, the last 6 comparison reports are kept): `vibr_report_<date>.html` (chart, peaks, quiet zones, slicer advice), `vibr_recommendations_<date>.csv`, `vibr_summary_<date>.csv`, `vibr_data_<date>.tar.gz` (raw measurements). The report UI and CSV files are in Russian; console messages are in English.
 
 **Filament.** The test does not depend on the filament — no extrusion. The filament only sets the max volumetric flow, i.e. how fast the slicer really prints a line. Speeds and flow are read from the latest G-code. The report has a filament list: add yours (e.g. PC 4, ABS 17 mm³/s), it is saved in the browser and switching re-calculates the table without a new test.
 
-**How to read.** Level = vibration energy in % of the noisiest test speed. "Quiet" = ≤ 35 % and not next to a peak (±1 test step). Peaks are found like in ShakeTune: the main resonance and small local bumps. "Actual" = speed after the flow limit. "Set" = nearest quiet speed below the flow limit, away from the edge of a resonance. Peak heights vary between runs, their positions do not, so the test makes 2 passes by default: each pass is normalised to its own maximum and the levels are averaged; peaks, quiet zones and advice use the average. Individual passes are shown as grey dashed lines — if they disagree a lot, repeat the test.
+**How to read.** Level = vibration energy in % of the noisiest test speed (relative, not absolute). Two thresholds, adjustable in the report:
+
+- **Lower threshold — "quiet" (default 35 %):** a speed is quiet if its level is at or below it and there is no peak within ±1 test step. Lower = stricter.
+- **Upper threshold — "resonance" (default 60 %):** above it vibrations are strong — expect ripples on walls. Between the two — "elevated": printable, better moved.
+- **Peak** (red cross): a local bump of the curve, like ShakeTune peaks; the peak speed counts as resonance at any height, neighbouring steps as elevated.
+
+"Actual" = speed after the flow limit. "Set" = nearest quiet speed below the flow limit, away from the edge of a resonance.
+
+### Comparing tests, clean series
+
+On the test printer back-to-back passes agreed within 2 %, but tests on different days did not (the 95 mm/s peak was 39 %, 100 % and 40 % of the max, at the same positions). So compare tests from different sessions: `VIBR_COMPARE RUNS=3` (no motion) builds one report from the last `RUNS` tests of the current series, each normalised and averaged; individual tests are grey dashed lines with dates. A series starts at the last `VIBR_TEST CLEAN=1` — use it after mechanical changes; older data stays archived but is left out.
 
 ### Manual install (non-stock / other Klipper)
 
@@ -229,6 +275,18 @@ No conflicts. You can also build the report from ShakeTune measurements: `~/klip
 ### Update / remove
 
 Update: run the install command again and restart Klipper (or add `moonraker_update.conf` to `moonraker.conf`). Remove: delete the include line from `printer.cfg`, save, then `bash ~/klipper-vibr-report/uninstall.sh` (results are kept).
+
+### Tested / not tested
+
+Tested on QIDI Q1 Pro firmware 4.4.20 (Nov 13–14 2026): GitHub install, `VIBR_TEST` (1 and 2 passes), report from the Klipper console, test comparison, report from ShakeTune 2.6.1 data. **Not tested on QIDI firmware v6.1.1**, mainline Klipper, or with QIDI Studio / Bambu Studio G-code.
+
+### Limitations
+
+- X/Y directions only. On CoreXY diagonal (45°) moves use one motor and may resonate at other speeds; infill is often at 45°. The new ShakeTune (`CREATE_VIBRATIONS_PROFILE`) sweeps many angles; diagonals are not tested here yet.
+- Acceleration phases are included in the energy; with `SIZE=80`, `ACCEL=5000` about 78 % of each side is at constant speed at 300 mm/s (ShakeTune suggests > 70 %).
+- Fans, heaters and chamber temperature change the picture; test in the conditions you print in.
+- 100 % = the noisiest speed of this test, not an absolute value. The report does not find the cause (use frequency holding / TMC tuning for that). Calibrate input shaper first.
+- The new ShakeTune needs Python ≥ 3.9; stock QIDI Klipper runs on Python 2.7.
 
 ### License
 

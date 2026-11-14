@@ -43,7 +43,8 @@ HOME = os.path.expanduser("~")
 # VIBR_TEST: vibr_sp30_00_p1 (проход 1), старые vibr_sp30_00; ShakeTune: sp30_00n1
 FNAME_RE = re.compile(r"sp(\d+)_(\d+)(?:n\d+|_p(\d+))?\.csv$")
 OWN_GLOB = "/tmp/*-vibr_sp*.csv"
-KEEP_RUNS = 5  # сколько последних прогонов хранить в папке результатов
+KEEP_RUNS = 6  # сколько последних прогонов хранить в папке результатов
+SERIES_FILE = "vibr_series_start.txt"  # с какого теста начинается текущая серия (после CLEAN=1)
 F_LO, F_HI = 5.0, 1000.0  # полоса, в которой суммируется энергия вибраций, Гц
 
 # Параметры OrcaSlicer: ключ в G-code, название, ключ ширины линии (None — без предела расхода)
@@ -119,14 +120,12 @@ def psd(x, fs, nfft):
     return np.fft.rfftfreq(nfft, 1.0 / fs), p
 
 
-def analyse(files):
-    """Энергия вибраций по скоростям. Несколько проходов: каждый нормируется к своему максимуму,
-    затем уровни усредняются — так «громкий» проход не перетягивает среднее."""
-    by_pass = {}
+def measure(files, group=""):
+    """Энергия вибраций каждого файла замера -> список записей (это и кэшируется рядом с архивом)."""
+    recs = []
     for path, member in files:
         m = FNAME_RE.search(member or path)
         speed = float("%s.%s" % (m.group(1), m.group(2)))
-        pas = int(m.group(3) or 1)
         d = load_accel(path, member)
         if len(d) < 256:
             continue
@@ -142,24 +141,60 @@ def analyse(files):
             total = p if total is None else total + p
         band = (f >= F_LO) & (f <= min(F_HI, fs / 2))
         dom = float(f[band][np.argmax(total[band])])
-        by_pass.setdefault(pas, {})[speed] = (sum(axes), axes, dom)
+        recs.append({"group": group, "pass": int(m.group(3) or 1), "speed": speed,
+                     "e": sum(axes), "axes": axes, "dom": dom})
+    return recs
+
+
+def analyse(recs):
+    """Записи measure() -> (rows, labels). Каждая кривая (тест, проход) нормируется к своему максимуму;
+    проходы усредняются внутри теста, тесты — между собой, чтобы «громкий» замер не перетягивал
+    среднее. labels — подписи кривых в rows[i]["passes"] (проходы или тесты)."""
+    by_pass = {}
+    for r in recs:
+        by_pass.setdefault((r["group"], r["pass"]), {})[r["speed"]] = (r["e"], r["axes"], r["dom"])
     passes = sorted(by_pass)
-    speeds = sorted(set.intersection(*[set(by_pass[k]) for k in passes]))  # скорости, замеренные во всех проходах
+    speeds = sorted(set.intersection(*[set(by_pass[k]) for k in passes]))  # скорости, замеренные во всех кривых
     pmax = dict((k, max(by_pass[k][v][0] for v in speeds)) for k in passes)
+    groups = sorted(set(k[0] for k in passes))
+    if len(groups) > 1:  # сравнение тестов: кривая = среднее проходов теста
+        curves = [[k for k in passes if k[0] == g] for g in groups]
+        labels = groups
+    else:
+        curves = [[k] for k in passes]
+        labels = ["проход %d" % k[1] for k in passes]
     rows = []
     for v in speeds:
         recs = [by_pass[k][v] for k in passes]
+        lv = [sum(100.0 * by_pass[k][v][0] / pmax[k] for k in c) / len(c) for c in curves]
         rows.append({"speed": v,
                      "energy": sum(x[0] for x in recs) / len(recs),
                      "ex": sum(x[1][0] for x in recs) / len(recs),
                      "ey": sum(x[1][1] for x in recs) / len(recs),
                      "ez": sum(x[1][2] for x in recs) / len(recs),
                      "dom": max(recs, key=lambda x: x[0])[2],
-                     "passes": [100.0 * by_pass[k][v][0] / pmax[k] for k in passes]})
+                     "passes": lv})
     lmax = max(sum(r["passes"]) / len(r["passes"]) for r in rows)
     for r in rows:
         r["level"] = 100.0 * (sum(r["passes"]) / len(r["passes"])) / lmax
-    return rows
+    return rows, labels
+
+
+def stamp_of(path):
+    m = re.search(r"(\d{8}_\d{6})", os.path.basename(path))
+    return m.group(1) if m else ""
+
+
+def series_archives(out_dir):
+    """Архивы замеров текущей серии (начиная с последнего теста с CLEAN=1), от старых к новым."""
+    arch = sorted(glob.glob(os.path.join(out_dir, "vibr_data_*.tar.gz")))
+    try:
+        with io.open(os.path.join(out_dir, SERIES_FILE), encoding="utf-8") as fh:
+            start = fh.read().strip()
+        arch = [x for x in arch if stamp_of(x) >= start]
+    except (IOError, OSError):
+        pass
+    return arch
 
 
 def wait_written(paths, timeout=30.0):
@@ -174,6 +209,30 @@ def wait_written(paths, timeout=30.0):
         time.sleep(1.0)
 
 
+def cache_path(arch):
+    return arch.replace("vibr_data_", "vibr_energy_").replace(".tar.gz", ".json")
+
+
+def save_cache(arch, recs):
+    """Посчитанная энергия рядом с архивом: сравнение тестов не пересчитывает старые замеры."""
+    with io.open(cache_path(arch), "w", encoding="utf-8") as fh:
+        fh.write(json.dumps([dict(r, group="") for r in recs]).decode("ascii") if sys.version_info[0] == 2
+                 else json.dumps([dict(r, group="") for r in recs]))
+
+
+def archive_recs(arch, group):
+    """Записи энергии теста из кэша, а если кэша нет — посчитать по архиву и сохранить кэш."""
+    try:
+        with io.open(cache_path(arch), encoding="utf-8") as fh:
+            recs = json.load(fh)
+    except (IOError, OSError, ValueError):
+        recs = measure(find_csv([arch]))
+        save_cache(arch, recs)
+    for r in recs:
+        r["group"] = group
+    return recs
+
+
 def archive_own(paths, out_dir, stamp):
     """Замеры VIBR_TEST — в архив рядом с отчётом, из /tmp убрать (чтобы следующий тест не смешался со старым)."""
     arch = os.path.join(out_dir, "vibr_data_%s.tar.gz" % stamp)
@@ -186,12 +245,15 @@ def archive_own(paths, out_dir, stamp):
 
 
 def prune(out_dir, keep):
-    """Оставить в папке результатов только последние keep прогонов."""
-    stamps = sorted({re.search(r"_(\d{8}_\d{6})\.", f).group(1) for f in os.listdir(out_dir)
-                     if f.startswith("vibr_") and re.search(r"_(\d{8}_\d{6})\.", f)})
-    for st in stamps[:-keep]:
-        for f in os.listdir(out_dir):
-            if st in f and f.startswith("vibr_"):
+    """Оставить последние keep тестов (с архивом замеров) и отдельно последние keep отчётов без нового
+    теста (сравнения, пересборки) — чтобы отчёты не вытесняли сами замеры."""
+    files = [f for f in os.listdir(out_dir) if f.startswith("vibr_") and re.search(r"_(\d{8}_\d{6})\.", f)]
+    stamps = sorted({re.search(r"_(\d{8}_\d{6})\.", f).group(1) for f in files})
+    tests = [st for st in stamps if "vibr_data_%s.tar.gz" % st in files]
+    reports = [st for st in stamps if st not in tests]
+    for st in tests[:-keep] + reports[:-keep]:
+        for f in files:
+            if st in f:
                 os.remove(os.path.join(out_dir, f))
 
 
@@ -406,6 +468,10 @@ def main():
     ap.add_argument("--accel", type=int, default=5000, help="ACCEL теста (для подписи), по умолчанию 5000")
     ap.add_argument("--quiet", type=float, default=35.0, help="порог «тихо», %% от максимума (35)")
     ap.add_argument("--peak", type=float, default=60.0, help="порог «резонанс», %% от максимума (60)")
+    ap.add_argument("--compare", type=int, metavar="N",
+                    help="без нового теста: отчёт по последним N тестам текущей серии (среднее)")
+    ap.add_argument("--clean", action="store_true",
+                    help="этот тест начинает новую серию: прежние тесты в сравнение не попадают")
     a = ap.parse_args()
     u = lambda s: s.decode("utf-8") if isinstance(s, bytes) else s  # Python 2: пути с русскими буквами
     a.input, a.gcode, a.out = [u(s) for s in (a.input or [])], u(a.gcode), u(a.out)
@@ -413,23 +479,35 @@ def main():
     a.gcode = a.gcode or gcode_dir
     a.out = a.out or out_dir
 
-    own = []
-    if a.input:
-        files = find_csv(a.input)
+    own, recs = [], []
+    if a.compare:  # несколько тестов серии; энергия — из кэша рядом с архивами
+        arch = series_archives(a.out)[-max(a.compare, 1):]
+        for x in arch:
+            recs += archive_recs(x, stamp_of(x))
+        say("vibr_report: comparing %d test(s): %s" % (len(arch), ", ".join(os.path.basename(x) for x in arch)))
+        if len(arch) < 2:
+            say("vibr_report: only %d test in the current series - run VIBR_TEST again later to compare" % len(arch))
+    elif a.input:
+        recs = measure(find_csv(a.input))
     else:
         own = sorted(glob.glob(OWN_GLOB))
         wait_written(own)
-        files = [(p, None) for p in own]
-        if len(files) < 3:
+        if len(own) >= 3:
+            recs = measure([(p, None) for p in own])
+        else:
+            own = []
             arch = sorted(glob.glob(os.path.join(a.out, "vibr_data_*.tar.gz")))
             if arch:
                 say("vibr_report: no fresh measurements in /tmp, using the last archive " + os.path.basename(arch[-1]))
-                files, own = find_csv([arch[-1]]), []
-    if len(files) < 3:
-        say("vibr_report: found %d measurement files. Run VIBR_TEST first "
-            "(or pass --input with a folder/archive of measurements)." % len(files))
+                recs = archive_recs(arch[-1], "")
+    if len(recs) < 3:
+        say("vibr_report: found %d measurements. Run VIBR_TEST first "
+            "(or pass --input with a folder/archive of measurements)." % len(recs))
         sys.exit(1)
-    rows = analyse(files)
+    rows, labels = analyse(recs)
+    is_cmp = bool(a.compare) and len(set(r["group"] for r in recs)) > 1  # в выборке несколько тестов
+    if is_cmp:  # 20261114_143958 -> «тест 14.11 14:39»
+        labels = ["тест %s.%s %s:%s" % (st[6:8], st[4:6], st[9:11], st[11:13]) for st in labels]
 
     gcode = latest_gcode(a.gcode) if a.gcode else None
     cfg = read_slicer(gcode) if gcode else {}
@@ -438,13 +516,13 @@ def main():
         f.update(recommend(rows, f, sl["maxvol"], a.quiet, a.peak))
 
     peaks, step = find_peaks(rows), speed_step(rows)
-    npass = len(rows[0]["passes"])
+    npass = len(labels)
     if not os.path.isdir(a.out):
         os.makedirs(a.out)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     write_csv(os.path.join(a.out, "vibr_summary_%s.csv" % stamp),
               ["Скорость, мм/с", "Уровень, % от макс.", "Оценка", "Местный пик"]
-              + ["Проход %d, %%" % (k + 1) for k in range(npass)]
+              + ["%s, %%" % (l[:1].upper() + l[1:]) for l in labels]
               + ["Энергия (сумма)", "X", "Y", "Z", "Главная частота, Гц"],
               [[fmt(r["speed"], 0), fmt(r["level"]), verdict(r["level"], r["speed"], peaks, step, a.quiet, a.peak),
                 "да" if r["speed"] in peaks else ""]
@@ -458,7 +536,7 @@ def main():
                 f["verdict"], fmt(f["rec"], 0) if f["rec"] else "оставить", f["note"]] for f in sl["features"]])
 
     data = {"rows": rows, "slicer": sl, "gcode": os.path.basename(gcode) if gcode else None,
-            "files": len(files), "npass": npass, "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
+            "files": len(recs), "npass": npass, "labels": labels, "compare": is_cmp, "accel": a.accel, "quiet": a.quiet, "peak": a.peak, "peaks": peaks, "step": step,
             "date": time.strftime("%Y-%m-%d %H:%M")}
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibr_report_template.html")
     with io.open(tpl_path, encoding="utf-8") as fh:
@@ -468,11 +546,15 @@ def main():
     with io.open(out_html, "w", encoding="utf-8") as fh:
         fh.write(html)
     if own:
-        archive_own(own, a.out, stamp)
+        save_cache(archive_own(own, a.out, stamp), recs)
+        if a.clean:
+            with io.open(os.path.join(a.out, SERIES_FILE), "w", encoding="utf-8") as fh:
+                fh.write(stamp)
+            say("vibr_report: new series started - older tests are excluded from VIBR_COMPARE")
     prune(a.out, KEEP_RUNS)
 
-    say("vibr_report: %d measurements, %d pass(es), speeds %.0f-%.0f mm/s"
-        % (len(files), npass, rows[0]["speed"], rows[-1]["speed"]))
+    say("vibr_report: %d measurements, %d %s, speeds %.0f-%.0f mm/s"
+        % (len(recs), npass, "test(s)" if is_cmp else "pass(es)", rows[0]["speed"], rows[-1]["speed"]))
     say("Vibration peaks: " + (", ".join("%.0f" % p for p in peaks) or "none") + " mm/s")
     say("Quiet zones: " + (", ".join(("%.0f" % z[0]) if z[0] == z[1] else ("%.0f-%.0f" % z) for z in zones(rows, a.quiet, a.peak)) or "none"))
     say("G-code: %s" % (os.path.basename(gcode) if gcode else "not found - enter speeds in the report"))

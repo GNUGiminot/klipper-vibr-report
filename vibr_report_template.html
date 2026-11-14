@@ -81,14 +81,16 @@ ul { margin: 0; padding-left: 1.2em; }
     <h2>Исходные данные</h2>
     <div class="grid">
       <div><label for="layer">Высота слоя, мм</label><input id="layer" type="number" step="0.01"></div>
-      <div><label for="quiet">Порог «тихо», % от максимума</label><input id="quiet" type="number" step="5"></div>
-      <div><label for="peak">Порог «резонанс», %</label><input id="peak" type="number" step="5"></div>
+      <div><label for="quiet">Нижний порог — «тихо», % от максимума</label><input id="quiet" type="number" step="5"></div>
+      <div><label for="peak">Верхний порог — «резонанс», %</label><input id="peak" type="number" step="5"></div>
     </div>
   </section>
 
   <section class="card">
     <h2>Как читать</h2>
     <ul>
+      <li><b>Нижний порог (по умолчанию 35 %)</b> — граница «тихо». Скорость тихая, если её уровень не выше этого порога и рядом (±1 шаг теста) нет пика. Уровень между порогами — «повышенные»: печатать можно, но лучше сдвинуть. Меньше порог — строже отбор тихих скоростей.</li>
+      <li><b>Верхний порог (по умолчанию 60 %)</b> — граница «резонанс»: выше него вибрации сильные, на стенках жди ряби. Пик (красный крестик) считается резонансом при любой высоте — это местный бугор кривой, у которого скорость лучше не ставить.</li>
       <li><b>Уровень</b> — энергия вибраций при этой скорости в процентах от самой «шумной» скорости теста. Это сравнение скоростей между собой, а не абсолютная величина.</li>
       <li><b>Фактически</b> — скорость, которую слайсер реально даст: он не превышает макс. объёмный расход пластика. Поэтому быстрые заполнения часто идут медленнее, чем написано в профиле.</li>
       <li><b>Поставить</b> — ближайшая тихая скорость, не выше предела расхода. Если её нет — оставьте как есть.</li>
@@ -127,6 +129,7 @@ function levelAt(v) {
 const PEAKS = D.peaks || [], STEP = D.step || 5;
 rows.forEach(r => { if (!r.passes) r.passes = [r.level]; });
 const NPASS = rows[0].passes.length;
+const LABELS = D.labels || rows[0].passes.map((x, k) => `проход ${k + 1}`);
 function verdict(level, v, q, p) {
   const d = Math.min(...PEAKS.map(x => Math.abs(v - x)), 1e9);
   if (d <= STEP / 2 || level >= p) return "резонанс";
@@ -186,7 +189,7 @@ function chart(q, p, feats) {
   g += `<text x="${W - R}" y="${H - 1}" text-anchor="end">мм/с</text>`;
   [[q, "var(--quiet)"], [p, "var(--bad)"]].forEach(([l, c]) => g += `<line x1="${L}" x2="${W - R}" y1="${Y(l)}" y2="${Y(l)}" stroke="${c}" stroke-dasharray="5 4" opacity=".7"/>`);
   if (NPASS > 1) for (let k = 0; k < NPASS; k++)
-    g += `<polyline fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="${k ? "2 3" : "6 3"}" opacity=".7" points="${rows.map(r => X(r.speed) + "," + Y(r.passes[k])).join(" ")}"><title>проход ${k + 1}</title></polyline>`;
+    g += `<polyline fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="${["6 3", "2 3", "8 2 2 2", "1 4"][k % 4]}" opacity=".7" points="${rows.map(r => X(r.speed) + "," + Y(r.passes[k])).join(" ")}"><title>${LABELS[k]}</title></polyline>`;
   g += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.2" points="${rows.map(r => X(r.speed) + "," + Y(r.level)).join(" ")}"/>`;
   rows.forEach(r => g += `<circle cx="${X(r.speed)}" cy="${Y(r.level)}" r="2.6" fill="var(--accent)"><title>${fmt(r.speed)} мм/с — ${fmt(r.level, 1)}%</title></circle>`);
   PEAKS.forEach(x => { const y = Y(levelAt(x)); g += `<path d="M${X(x) - 5},${y - 5}L${X(x) + 5},${y + 5}M${X(x) - 5},${y + 5}L${X(x) + 5},${y - 5}" stroke="var(--bad)" stroke-width="2.4"/>${y - 9 < T + 4 ? `<text x="${X(x) + 8}" y="${y + 4}"` : `<text x="${X(x)}" y="${y - 9}" text-anchor="middle"`} style="fill:var(--bad);font-weight:700">${fmt(x)}</text>`; });
@@ -218,7 +221,7 @@ function render() {
     set("note", f.r.note);
   });
   chart(q, p, feats);
-  const ph = NPASS > 1 ? rows[0].passes.map((x, k) => `<th>Проход ${k + 1}</th>`).join("") : "";
+  const ph = NPASS > 1 ? LABELS.map(l => `<th>${l[0].toUpperCase() + l.slice(1)}</th>`).join("") : "";
   $("data").innerHTML = `<tr><th>Скорость, мм/с</th><th>Уровень</th><th>Оценка</th>${ph}<th>X</th><th>Y</th><th>Z</th><th>Главная частота, Гц</th></tr>` +
     rows.map(r => `<tr><td class="num">${fmt(r.speed)}</td><td class="num">${fmt(r.level, 1)}%</td><td>${tag(verdict(r.level, r.speed, q, p))}${PEAKS.includes(r.speed) ? " <b style=\"color:var(--bad)\">пик</b>" : ""}</td>
       ${NPASS > 1 ? r.passes.map(x => `<td class="num">${fmt(x, 0)}%</td>`).join("") : ""}<td class="num">${r.ex.toPrecision(3)}</td><td class="num">${r.ey.toPrecision(3)}</td><td class="num">${r.ez.toPrecision(3)}</td><td class="num">${fmt(r.dom)}</td></tr>`).join("");
@@ -229,7 +232,7 @@ $("rec").innerHTML = `<tr><th>№</th><th>Что</th><th>Сейчас, мм/с</
     <td><input data-i="${i}" type="number" step="5" value="${f.speed == null ? "" : f.speed}" aria-label="${f.name}, мм/с"></td>
     <td class="num" id="ccap${i}"></td><td class="num" id="ceff${i}"></td><td class="num" id="clvl${i}"></td>
     <td id="cver${i}"></td><td class="num" id="crec${i}"></td><td class="note" id="cnote${i}"></td></tr>`).join("");
-$("sub").textContent = `Замеров: ${D.files}` + (NPASS > 1 ? `, проходов: ${NPASS} (уровень — среднее)` : "") + `, скорости ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с, ускорение теста ${D.accel} мм/с². ` +
+$("sub").textContent = `Замеров: ${D.files}` + (NPASS > 1 ? (D.compare ? `, сравнение тестов: ${NPASS} (уровень — среднее)` : `, проходов: ${NPASS} (уровень — среднее)`) : "") + `, скорости ${fmt(S[0])}–${fmt(S[S.length - 1])} мм/с, ускорение теста ${D.accel} мм/с². ` +
   (D.gcode ? `Скорости слайсера — из «${D.gcode}».` : "G-code не найден — введите скорости вручную.") + ` Отчёт от ${D.date}.`;
 // Пластики: имя + макс. расход; хранятся в браузере (общие для всех отчётов), без хранилища — только на эту сессию
 const PKEY = "vibr-report-plastics", AKEY = "vibr-report-plastic-active";
@@ -262,7 +265,9 @@ $("pdel").addEventListener("click", () => {
   plastics = plastics.filter(x => x.name !== active); active = plastics[0].name; save(); fillPlastics(); render();
 });
 fillPlastics();
-if (NPASS > 1) $("passnote").textContent = `Синяя линия — среднее ${NPASS} проходов, по ней считаются пики и рекомендации; серые пунктиры — отдельные проходы. Если они сильно расходятся, повторите тест.`;
+if (NPASS > 1) $("passnote").textContent = D.compare
+  ? `Синяя линия — среднее ${NPASS} тестов (${LABELS.join(", ")}), по ней считаются пики и рекомендации; серые пунктиры — отдельные тесты. Сильное расхождение — признак того, что механика меняется от раза к разу (температура, натяжение, что-то болтается).`
+  : `Синяя линия — среднее ${NPASS} проходов, по ней считаются пики и рекомендации; серые пунктиры — отдельные проходы. Если они сильно расходятся, повторите тест.`;
 $("layer").value = D.slicer.layer;
 $("quiet").value = D.quiet; $("peak").value = D.peak;
 document.addEventListener("input", e => { if (e.target.tagName === "INPUT" && e.target.id !== "pname") render(); });
